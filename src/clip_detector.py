@@ -40,37 +40,53 @@ def detect_clips(transcript_text: str, stream_title: str, category: str = "Genel
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     category_instruction = get_category_instruction(category)
 
-    prompt = f"""Sen bir oyun yayını editörüsün. Aşağıda '{stream_title}' adlı Kick yayınının transkripti var.
-Yayın kategorisi: {category}
+    prompt = f"""Sen Türk bir Kick yayıncısının (feronline) klip editörüsün.
+Yayın: '{stream_title}' | Kategori: {category}
 
 {category_instruction}
 
-Transkriptten viral olabilecek TÜM ilgi çekici anları bul — kaç tane olursa olsun.
-Sonra onları viral potansiyeline göre en iyiden en kötüye sırala ve EN İYİ 10'unu döndür.
+Transkriptten ilgi çekici anları bul, en iyi 10'unu döndür.
+Eğer gerçekten iyi an yoksa boş liste döndür: []
 
-Eğer yayında hiç ilgi çekici an yoksa veya transkript çok boşsa BOŞ LİSTE döndür: []
+--- BAŞLIK KURALLARI (ÇOK ÖNEMLİ) ---
+- Başlık SAMİMİ ve DOĞAL olsun, sanki bir arkadaşın klip attığında yazacağı gibi
+- ASLA şu klişe ifadeleri kullanma: "çıldırdı", "patladı", "aniden", "inanılmaz", "kaçırma", "sadece burada", "böyle sahneler"
+- Transkriptte geçen gerçek bir sözü veya anı yansıt
+- Sade, kısa, merak uyandıran yaz — max 55 karakter (#Shorts hariç)
+- Türkçe internet dilinde, doğal konuşma tarzında
 
-Kurallar:
-- Her klip MAXIMUM 60 saniye (tercihen 30-60 sn arası), minimum 20 saniye
-- Klipler birbiriyle çakışmasın
-- Score 1-10 arası: 7 ve üzeri gerçekten iyi, 5-6 orta, 5 altı atla
-- Sadece score >= {MIN_SCORE} olan klipler döndür
+Kötü başlık örnekleri (YAPMA):
+❌ "Yayıncı Aniden Patladı 💢"
+❌ "Bu Anı Kaçırma! 😱"
+❌ "Çıldırdı! 😂🔥"
 
-Caption için: {category} kategorisine uygun, Türkçe, enerjik, emoji'li yaz.
-- Açıklama max 400 karakter olsun (YouTube 5000 ama kısa daha iyi)
-- En fazla 10 hashtag ekle, ilk 3'ü en önemli olsun (YouTube başlığın üzerinde gösterir)
-- Başlık max 60 karakter (# dahil)
+İyi başlık örnekleri (BÖYLE YAP):
+✅ "neden böyle bir şey yaparsın ki"
+✅ "o an sessizlik"
+✅ "2 saatlik uğraş 10 saniyede gitti"
 
-SADECE JSON döndür, başka hiçbir şey yazma. Format:
+--- CAPTION KURALLARI ---
+- 2-3 satır, samimi ve kısa
+- Abartılı "viral olacak!" tarzı yazma
+- Transkriptten emin olmadığın kelimeleri caption'a yazma
+- Max 300 karakter
+- Sonuna max 8 hashtag: #feronline #kick #shorts ve kategoriye uygun 2-3 tane daha
+
+--- DİĞER KURALLAR ---
+- Her klip 20-60 saniye arası
+- Klipler çakışmasın
+- Score 1-10, sadece >= {MIN_SCORE} olanları döndür
+
+SADECE JSON döndür:
 [
   {{
-    "title": "YouTube Shorts başlığı (Türkçe, max 60 karakter) #Shorts",
+    "title": "başlık #Shorts",
     "start_seconds": 120,
     "end_seconds": 175,
-    "description": "Klibin kısa açıklaması",
-    "caption": "3-4 satır açıklama, emoji ve hashtagler (#feronline #kick #{category.lower().replace(' ', '')} #shorts)",
+    "description": "kısa açıklama",
+    "caption": "2-3 satır samimi açıklama\\n\\n#feronline #kick #shorts",
     "tags": ["feronline", "kick", "shorts"],
-    "score": 9
+    "score": 8
   }}
 ]
 
