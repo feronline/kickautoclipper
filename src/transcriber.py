@@ -18,7 +18,7 @@ def extract_audio(video_path: str) -> str:
 
 def transcribe(audio_path: str) -> list[dict]:
     print("Whisper ile transkript oluşturuluyor...")
-    model = whisper.load_model("base")
+    model = whisper.load_model("tiny")
     result = model.transcribe(audio_path, language="tr", verbose=False, word_timestamps=True)
 
     segments = []

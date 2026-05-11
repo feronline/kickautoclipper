@@ -15,24 +15,55 @@ def cut_clip(video_path: str, start: float, end: float, output_path: str):
     subprocess.run(cmd, check=True, capture_output=True)
 
 
-def convert_to_vertical_with_zoom(input_path: str, output_path: str):
-    """16:9 yatay videoyu 9:16 dikeye çevir: bulanık arka plan + %5 zoom ön plan."""
+def convert_to_vertical_cam_game(input_path: str, output_path: str):
+    """
+    Kamera üstte (%40), oyun ekranı altta (%60).
+    Kamera kaynağı: sağ alt 1/4 x 1/4 (16'ya bölündüğünde sağ alt hücre).
+    Oyun: tam 16:9 frame. Her iki bölüm bulanık arka plan + zoom ile doldurulur.
+    """
+    cam_h = 768   # 1920 * 0.40
+    game_h = 1152  # 1920 * 0.60
+
+    filter_complex = (
+        # Kamera: sağ-alt 1/4 x 1/4
+        "[0:v]crop=iw/4:ih/4:iw*3/4:ih*3/4[cam_raw];"
+
+        # Kamera arka plan (blur ile 1080x768 doldur)
+        f"[cam_raw]scale=1080:{cam_h}:force_original_aspect_ratio=increase,"
+        f"crop=1080:{cam_h},boxblur=20:5[cam_bg];"
+
+        # Kamera ön plan (%5 zoom)
+        f"[cam_raw]scale=1134:-2,crop=1080:ih:(iw-1080)/2:0[cam_fg];"
+
+        # Kamera bölümü birleştir
+        f"[cam_bg][cam_fg]overlay=(W-w)/2:(H-h)/2[cam_section];"
+
+        # Oyun: tam frame (%5 zoom)
+        "[0:v]scale=1134:-2,crop=1080:ih:(iw-1080)/2:0[game_zoom];"
+
+        # Oyun arka plan (blur ile 1080x1152 doldur)
+        f"[game_zoom]scale=1080:{game_h}:force_original_aspect_ratio=increase,"
+        f"crop=1080:{game_h},boxblur=20:5[game_bg];"
+
+        # Oyun ön plan (yüksekliğe sığdır)
+        f"[game_zoom]scale=-2:{game_h}[game_fg];"
+
+        # Oyun bölümü birleştir
+        f"[game_bg][game_fg]overlay=(W-w)/2:(H-h)/2[game_section];"
+
+        # Kamera üstte, oyun altta
+        "[cam_section][game_section]vstack=inputs=2"
+    )
+
     cmd = [
         "ffmpeg", "-y", "-i", input_path,
-        "-filter_complex",
-        (
-            "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,"
-            "crop=1080:1920,boxblur=25:5[bg];"
-            "[0:v]scale=1134:-2,crop=1080:ih:(iw-1080)/2:0,setsar=1[fg];"
-            "[bg][fg]overlay=(W-w)/2:(H-h)/2"
-        ),
-        "-c:v", "libx264", "-preset", "fast",
-        "-c:a", "aac",
+        "-filter_complex", filter_complex,
+        "-c:v", "libx264", "-preset", "fast", "-c:a", "aac",
         output_path
     ]
     result = subprocess.run(cmd, capture_output=True)
     if result.returncode != 0:
-        print("Dikey dönüşüm hatası, orijinal devam ediyor.")
+        print(f"Dikey dönüşüm hatası: {result.stderr.decode()[-300:]}")
         shutil.copy(input_path, output_path)
 
 
@@ -83,8 +114,8 @@ def process_clips(video_path: str, clips: list[dict], segments: list[dict], outp
         print(f"[{i+1}/10] Kesiliyor: {start:.0f}s - {end:.0f}s")
         cut_clip(video_path, start, end, raw_path)
 
-        print(f"[{i+1}/10] Dikey formata çevriliyor + zoom...")
-        convert_to_vertical_with_zoom(raw_path, vertical_path)
+        print(f"[{i+1}/10] Dikey formata çevriliyor (kamera üst, oyun alt)...")
+        convert_to_vertical_cam_game(raw_path, vertical_path)
         os.remove(raw_path)
 
         clip_segments = filter_segments_for_clip(segments, start, end)
