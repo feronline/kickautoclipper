@@ -77,17 +77,21 @@ def upload_clip(clip: dict, youtube=None, publish_at: datetime = None) -> str:
     return video_id
 
 
-def upload_all_clips(clips: list[dict]) -> list[str]:
+def upload_all_clips(clips: list[dict], on_uploaded=None) -> list[str]:
     youtube = get_youtube_client()
     video_ids = []
+    total = len(clips)
 
-    # İlk video 1 saat sonra, sonrakiler 3'er saat arayla yayına girer
     now = datetime.now(timezone.utc)
     publish_time = now + timedelta(hours=1)
 
     for i, clip in enumerate(clips):
         video_id = upload_clip(clip, youtube, publish_at=publish_time)
         video_ids.append(video_id)
+
+        if on_uploaded:
+            on_uploaded(clip["title"], video_id, i + 1, total)
+
         publish_time += timedelta(hours=PUBLISH_INTERVAL_HOURS)
 
     print(f"\nToplam {len(video_ids)} video yüklendi.")

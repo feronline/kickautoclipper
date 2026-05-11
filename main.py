@@ -8,6 +8,7 @@ from src.transcriber import extract_audio, transcribe, segments_to_text
 from src.clip_detector import detect_clips
 from src.video_processor import process_clips
 from src.youtube_uploader import upload_all_clips
+from src.notifier import notify_clip_uploaded, notify_error, notify_no_clips
 
 WORK_DIR = "workspace"
 
@@ -68,18 +69,20 @@ def main():
         if not clips:
             print("Klip alınacak an bulunamadı. İşlem tamamlandı.")
             save_last_processed_id(vod_id)
+            notify_no_clips()
             return
 
         clips_dir = os.path.join(WORK_DIR, "clips")
         processed_clips = process_clips(video_path, clips, segments, clips_dir)
 
-        video_ids = upload_all_clips(processed_clips)
+        video_ids = upload_all_clips(processed_clips, on_uploaded=notify_clip_uploaded)
 
         save_last_processed_id(vod_id)
         print(f"\n=== Tamamlandı! {len(video_ids)} Shorts yüklendi. ===")
 
     except Exception as e:
         print(f"HATA: {e}")
+        notify_error(str(e))
         raise
     finally:
         cleanup()
