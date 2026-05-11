@@ -34,7 +34,7 @@ def upload_clip(clip: dict, youtube=None) -> str:
     body = {
         "snippet": {
             "title": title,
-            "description": (
+            "description": clip.get("caption") or (
                 clip.get("description", "") +
                 "\n\n#Shorts #feronline #kick #gaming #clips"
             ),

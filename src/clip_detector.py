@@ -32,6 +32,7 @@ SADECE JSON döndür, başka hiçbir şey yazma. Format:
     "start_seconds": 120,
     "end_seconds": 175,
     "description": "Klibin kısa açıklaması",
+    "caption": "YouTube Shorts açıklaması — 3-4 satır, Türkçe, enerjik, emoji kullan, sonuna ilgili hashtagler ekle (#feronline #kick #gaming #shorts vb.)",
     "tags": ["tag1", "tag2", "gaming", "shorts"],
     "score": 9
   }}
