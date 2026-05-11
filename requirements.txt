@@ -1,0 +1,9 @@
+anthropic>=0.30.0
+faster-whisper
+yt-dlp
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
+ffmpeg-python
+requests
+numpy
