@@ -1,0 +1,10 @@
+anthropic>=0.30.0
+openai-whisper
+yt-dlp
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
+ffmpeg-python
+requests
+torch
+numpy

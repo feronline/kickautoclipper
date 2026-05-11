@@ -1,0 +1,7 @@
+workspace/
+client_secret.json
+*.pyc
+__pycache__/
+*.mp4
+*.mp3
+*.srt
