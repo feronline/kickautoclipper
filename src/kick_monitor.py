@@ -17,7 +17,7 @@ def get_latest_vod():
         response = requests.get(url, headers=HEADERS, timeout=30)
         response.raise_for_status()
         data = response.json()
-        videos = data.get("data", [])
+        videos = data if isinstance(data, list) else data.get("data", [])
         if not videos:
             print("Kick'te hiç yayın tekrarı bulunamadı.")
             return None
