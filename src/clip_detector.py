@@ -36,7 +36,7 @@ def get_category_instruction(category: str) -> str:
     return DEFAULT_INSTRUCTION
 
 
-def detect_clips(transcript_text: str, stream_title: str, category: str = "Genel") -> list[dict]:
+def detect_clips(transcript_text: str, stream_title: str, category: str = "Genel", audio_spikes_text: str = "") -> list[dict]:
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     category_instruction = get_category_instruction(category)
 
@@ -46,6 +46,7 @@ Yayın: '{stream_title}' | Kategori: {category}
 {category_instruction}
 
 Transkriptten ilgi çekici anları bul, en iyi 10'unu döndür.
+Eğer ses analizi verisi varsa oradaki yüksek enerjili anları da değerlendir — konuşma olmasa bile oyun sesi spike'ları ilgi çekici olabilir.
 Eğer gerçekten iyi an yoksa boş liste döndür: []
 
 --- BAŞLIK KURALLARI (ÇOK ÖNEMLİ) ---
@@ -91,7 +92,9 @@ SADECE JSON döndür:
 ]
 
 Transkript:
-{transcript_text[:15000]}
+{transcript_text[:13000]}
+
+{audio_spikes_text}
 """
 
     message = client.messages.create(
