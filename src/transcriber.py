@@ -8,10 +8,7 @@ def extract_audio(video_path: str) -> str:
     cmd = [
         "ffmpeg", "-y",
         "-i", video_path,
-        "-vn",
-        "-ar", "16000",
-        "-ac", "1",
-        "-b:a", "64k",
+        "-vn", "-ar", "16000", "-ac", "1", "-b:a", "64k",
         audio_path
     ]
     subprocess.run(cmd, check=True, capture_output=True)
@@ -20,16 +17,21 @@ def extract_audio(video_path: str) -> str:
 
 
 def transcribe(audio_path: str) -> list[dict]:
-    print("Whisper ile transkript oluşturuluyor (base model)...")
+    print("Whisper ile transkript oluşturuluyor...")
     model = whisper.load_model("base")
-    result = model.transcribe(audio_path, language="tr", verbose=False)
+    result = model.transcribe(audio_path, language="tr", verbose=False, word_timestamps=True)
 
     segments = []
     for seg in result["segments"]:
+        words = [
+            {"word": w["word"], "start": w["start"], "end": w["end"]}
+            for w in seg.get("words", [])
+        ]
         segments.append({
             "start": seg["start"],
             "end": seg["end"],
-            "text": seg["text"].strip()
+            "text": seg["text"].strip(),
+            "words": words
         })
 
     print(f"Transkript tamamlandı: {len(segments)} segment")
@@ -39,22 +41,55 @@ def transcribe(audio_path: str) -> list[dict]:
 def segments_to_text(segments: list[dict]) -> str:
     lines = []
     for seg in segments:
-        minutes = int(seg["start"] // 60)
-        seconds = int(seg["start"] % 60)
-        lines.append(f"[{minutes:02d}:{seconds:02d}] {seg['text']}")
+        m = int(seg["start"] // 60)
+        s = int(seg["start"] % 60)
+        lines.append(f"[{m:02d}:{s:02d}] {seg['text']}")
     return "\n".join(lines)
 
 
-def segments_to_srt(segments: list[dict], output_path: str):
-    def fmt(seconds: float) -> str:
-        h = int(seconds // 3600)
-        m = int((seconds % 3600) // 60)
-        s = int(seconds % 60)
-        ms = int((seconds % 1) * 1000)
-        return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+def generate_tiktok_ass(segments: list[dict], output_path: str, width=1080, height=1920):
+    header = f"""[Script Info]
+ScriptType: v4.00+
+PlayResX: {width}
+PlayResY: {height}
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,85,&H00FFFFFF,&H0000FFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,4,1,2,20,20,100,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+
+    def ts(sec: float) -> str:
+        h = int(sec // 3600)
+        m = int((sec % 3600) // 60)
+        s = sec % 60
+        return f"{h}:{m:02d}:{s:05.2f}"
+
+    events = []
+    for seg in segments:
+        words = seg.get("words", [])
+        if not words:
+            m = int(seg["start"] // 60)
+            s = int(seg["start"] % 60)
+            events.append(
+                f"Dialogue: 0,{ts(seg['start'])},{ts(seg['end'])},Default,,0,0,0,,{seg['text']}"
+            )
+            continue
+
+        group_size = 4
+        for i in range(0, len(words), group_size):
+            group = words[i:i + group_size]
+            start = group[0]["start"]
+            end = group[-1]["end"]
+            parts = []
+            for w in group:
+                dur_cs = max(1, int((w["end"] - w["start"]) * 100))
+                parts.append(f"{{\\k{dur_cs}}}{w['word'].strip()}")
+            text = " ".join(parts)
+            events.append(f"Dialogue: 0,{ts(start)},{ts(end)},Default,,0,0,0,,{text}")
 
     with open(output_path, "w", encoding="utf-8") as f:
-        for i, seg in enumerate(segments, 1):
-            f.write(f"{i}\n")
-            f.write(f"{fmt(seg['start'])} --> {fmt(seg['end'])}\n")
-            f.write(f"{seg['text']}\n\n")
+        f.write(header + "\n".join(events))

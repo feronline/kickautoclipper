@@ -7,7 +7,7 @@ from src.kick_monitor import check_new_vod, save_last_processed_id
 from src.transcriber import extract_audio, transcribe, segments_to_text
 from src.clip_detector import detect_clips
 from src.video_processor import process_clips
-from src.youtube_uploader import upload_clip
+from src.youtube_uploader import upload_all_clips
 
 WORK_DIR = "workspace"
 
@@ -65,11 +65,10 @@ def main():
         clips_dir = os.path.join(WORK_DIR, "clips")
         processed_clips = process_clips(video_path, clips, segments, clips_dir)
 
-        for clip in processed_clips:
-            upload_clip(clip)
+        video_ids = upload_all_clips(processed_clips)
 
         save_last_processed_id(vod_id)
-        print(f"\n=== Tamamlandı! {len(processed_clips)} klip yüklendi. ===")
+        print(f"\n=== Tamamlandı! {len(video_ids)} Shorts yüklendi. ===")
 
     except Exception as e:
         print(f"HATA: {e}")

@@ -5,6 +5,9 @@ on:
     - cron: "0 */2 * * *"  # Her 2 saatte bir çalışır
   workflow_dispatch:        # Manuel tetikleme butonu
 
+permissions:
+  contents: write
+
 jobs:
   process:
     runs-on: ubuntu-latest
