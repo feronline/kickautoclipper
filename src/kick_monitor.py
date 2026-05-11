@@ -1,6 +1,5 @@
 import requests
 import os
-import json
 
 KICK_CHANNEL = "feronline"
 LAST_VOD_FILE = "last_vod_id.txt"
@@ -9,6 +8,19 @@ HEADERS = {
     "Accept": "application/json",
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
 }
+
+
+def extract_category(vod: dict) -> str:
+    # Farklı API yapılarını dene
+    categories = (
+        vod.get("categories")
+        or vod.get("livestream", {}).get("categories")
+        or []
+    )
+    if categories:
+        cat = categories[0]
+        return cat.get("name") or cat.get("slug") or "Genel"
+    return "Genel"
 
 
 def get_latest_vod():
@@ -52,5 +64,7 @@ def check_new_vod():
         print(f"Yeni yayın yok. Son işlenen: {vod_id}")
         return None
 
-    print(f"Yeni yayın bulundu: {vod.get('title')} (ID: {vod_id})")
+    category = extract_category(vod)
+    print(f"Yeni yayın bulundu: {vod.get('title')} | Kategori: {category} (ID: {vod_id})")
+    vod["_category"] = category
     return vod

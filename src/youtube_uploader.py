@@ -29,7 +29,8 @@ def upload_clip(clip: dict, youtube=None) -> str:
 
     title = clip["title"]
     if "#Shorts" not in title and "#shorts" not in title:
-        title = title[:60] + " #Shorts"
+        title = title[:90] + " #Shorts"
+    title = title[:100]  # YouTube max 100 karakter
 
     body = {
         "snippet": {

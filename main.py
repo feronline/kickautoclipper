@@ -27,6 +27,8 @@ def download_vod(vod: dict) -> str:
         "yt-dlp",
         "-f", "bestvideo[height<=720]+bestaudio/best[height<=720]",
         "--merge-output-format", "mp4",
+        "--quiet", "--progress",
+        "--progress-template", "[download] %(progress._percent_str)s %(progress._speed_str)s ETA %(progress._eta_str)s",
         "-o", output_path,
         vod_url
     ]
@@ -50,6 +52,7 @@ def main():
 
     vod_id = str(vod.get("id") or vod.get("uuid"))
     stream_title = vod.get("title", "Kick Yayın Tekrarı")
+    category = vod.get("_category", "Genel")
 
     try:
         video_path = download_vod(vod)
@@ -60,7 +63,12 @@ def main():
 
         transcript_text = segments_to_text(segments)
 
-        clips = detect_clips(transcript_text, stream_title)
+        clips = detect_clips(transcript_text, stream_title, category)
+
+        if not clips:
+            print("Klip alınacak an bulunamadı. İşlem tamamlandı.")
+            save_last_processed_id(vod_id)
+            return
 
         clips_dir = os.path.join(WORK_DIR, "clips")
         processed_clips = process_clips(video_path, clips, segments, clips_dir)
