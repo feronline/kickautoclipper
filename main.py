@@ -10,10 +10,11 @@ from src.audio_analyzer import detect_spikes, spikes_to_text, spikes_to_clips
 from src.video_processor import process_clips
 from src.youtube_uploader import upload_all_clips
 from src.notifier import notify_clip_uploaded, notify_error, notify_no_clips
-from src.performance_tracker import log_upload, get_performance_context
+from src.performance_tracker import log_upload, get_performance_context, should_skip_category
 from src.upload_queue import add_to_queue, pop_batch, queue_size
 from src.youtube_uploader import MAX_UPLOADS_PER_RUN
 from src.drive_sheets import upload_to_drive, log_to_sheets, ensure_sheet_headers
+from src.tiktok_uploader import upload_to_tiktok
 
 WORK_DIR = "workspace"
 _GA = bool(os.environ.get("GITHUB_ACTIONS"))
@@ -85,6 +86,11 @@ def main():
     category = vod.get("_category", "Genel")
     notice(f"✅ Yeni VOD bulundu: {stream_title} ({category})")
 
+    if should_skip_category(category):
+        notice(f"⏭️ '{category}' düşük performanslı kategori, atlanıyor.")
+        save_last_processed_id(vod_id)
+        return
+
     try:
         notice("⬇️ VOD indiriliyor...")
         video_path = download_vod(vod)
@@ -151,6 +157,9 @@ def main():
                     drive_link = upload_to_drive(clip.get("file_path", ""), safe_name)
                 except Exception as e:
                     print(f"  ⚠️ Drive yükleme hatası: {e}")
+
+            if os.environ.get("TIKTOK_COOKIES"):
+                upload_to_tiktok(clip)
 
             if sheet_id:
                 try:

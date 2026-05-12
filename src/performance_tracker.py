@@ -98,6 +98,41 @@ def _build_performance_summary(uploads: list):
     _write_json(PERFORMANCE_FILE, summary)
 
 
+def should_skip_category(category: str, min_videos: int = 5, threshold: float = 0.35) -> bool:
+    """
+    Kategori sürekli düşük performanslıysa True döner.
+    En az min_videos video olmalı, genel ortalamanın threshold'unun altındaysa atla.
+    """
+    summary = _read_json(PERFORMANCE_FILE, {})
+    if not summary or summary.get("total_videos", 0) < min_videos:
+        return False
+
+    by_cat = summary.get("by_category", {})
+    if not by_cat:
+        return False
+
+    # Kategori eşleştir (büyük/küçük harf)
+    key = next((k for k in by_cat if k.lower() == category.lower()), None)
+    if not key:
+        return False
+
+    cat_data = by_cat[key]
+    if cat_data["count"] < min_videos:
+        return False
+
+    total_views = summary.get("total_views", 0)
+    total_videos = summary.get("total_videos", 1)
+    overall_avg = total_views / total_videos
+
+    cat_avg = cat_data["avg_views"]
+    if overall_avg > 0 and cat_avg < overall_avg * threshold:
+        print(f"⚠️ '{category}' kategorisi düşük performanslı "
+              f"({cat_avg:,} vs genel ortalama {overall_avg:,.0f}). Atlanıyor.")
+        return True
+
+    return False
+
+
 def get_performance_context() -> str:
     """Claude'a geçirilecek performans özetini oluştur."""
     summary = _read_json(PERFORMANCE_FILE, {})

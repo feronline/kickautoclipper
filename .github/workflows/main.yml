@@ -65,7 +65,9 @@ jobs:
 
       - name: Bağımlılıkları yükle
         if: steps.vod_check.outputs.skip == 'false'
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements.txt
+          python -m playwright install chromium --with-deps 2>/dev/null || true
 
       - name: Otomasyonu çalıştır
         if: steps.vod_check.outputs.skip == 'false'
@@ -80,6 +82,7 @@ jobs:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
           GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+          TIKTOK_COOKIES: ${{ secrets.TIKTOK_COOKIES }}
         run: python main.py
 
       - name: Son işlenen VOD ID'yi kaydet
