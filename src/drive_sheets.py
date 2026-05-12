@@ -13,7 +13,7 @@ SCOPES = [
 SHEET_HEADERS = [
     "Tarih", "Yayın", "Kategori", "Klip Adı", "Süre (sn)",
     "Puan", "Yükleme Durumu", "Yayın Zamanı",
-    "YouTube Linki", "Drive Linki", "Açıklama"
+    "YouTube Linki", "TikTok Linki", "Drive Linki", "Açıklama"
 ]
 
 
@@ -76,6 +76,7 @@ def log_to_sheets(sheet_id: str, row: dict):
         row.get("status", ""),
         row.get("publish_at", ""),
         row.get("youtube_link", ""),
+        row.get("tiktok_link", ""),
         row.get("drive_link", ""),
         row.get("description", ""),
     ]]

@@ -30,35 +30,44 @@ def _get_cookies_file() -> str:
     return tmp.name
 
 
-def upload_to_tiktok(clip: dict) -> bool:
-    """TikTok'a klip yükler. Başarılıysa True döner."""
+def upload_to_tiktok(clip: dict) -> str:
+    """TikTok'a klip yükler. Başarılıysa video URL'i döner, hata olursa boş string."""
     if not os.environ.get("TIKTOK_COOKIES"):
-        return False
+        return ""
 
+    cookies_path = None
     try:
         from tiktok_uploader.upload import upload_video
 
         cookies_path = _get_cookies_file()
 
         title = clip.get("caption") or clip.get("title", "")
-        # TikTok başlık max 2200 karakter ama pratikte 150 ideal
         title = title[:150]
 
-        print(f"  TikTok'a yükleniyor: {clip['title'][:50]}")
-        upload_video(
+        print(f"  📱 TikTok'a yükleniyor: {clip['title'][:50]}")
+        result = upload_video(
             filename=clip["file_path"],
             description=title,
             cookies=cookies_path,
             headless=True,
         )
-        print(f"  ✅ TikTok yüklendi")
-        return True
+
+        # tiktok-uploader bazen URL, bazen video ID döner
+        tiktok_url = ""
+        if isinstance(result, str) and result.startswith("http"):
+            tiktok_url = result
+        elif isinstance(result, str) and result:
+            tiktok_url = f"https://www.tiktok.com/@feronline/video/{result}"
+
+        print(f"  ✅ TikTok yüklendi{': ' + tiktok_url if tiktok_url else ''}")
+        return tiktok_url or "uploaded"
 
     except Exception as e:
         print(f"  ⚠️ TikTok yükleme hatası: {e}")
-        return False
+        return ""
     finally:
-        try:
-            os.unlink(cookies_path)
-        except Exception:
-            pass
+        if cookies_path:
+            try:
+                os.unlink(cookies_path)
+            except Exception:
+                pass

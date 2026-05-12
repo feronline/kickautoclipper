@@ -157,13 +157,10 @@ def main():
 
         def on_uploaded(title, video_id, num, total):
             from datetime import datetime, timezone, timedelta
-            notify_clip_uploaded(title, video_id, num, total)
-            notice(f"  ✅ [{num}/{total}] Yüklendi: {title[:50]}")
-            source = next((c.get("source", "transcript") for c in processed_clips if c["title"] == title), "transcript")
-            log_upload(video_id, title, category, source, file_path=clip.get("file_path", ""))
 
             clip = next((c for c in processed_clips if c["title"] == title), {})
             publish_at = publish_times.get(title, "")
+            source = clip.get("source", "transcript")
 
             drive_link = ""
             if os.environ.get("GOOGLE_DRIVE_FOLDER_ID") or os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON"):
@@ -173,11 +170,15 @@ def main():
                 except Exception as e:
                     print(f"  ⚠️ Drive yükleme hatası: {e}")
 
-            tiktok_ok = False
+            tiktok_url = ""
             if os.environ.get("TIKTOK_COOKIES"):
-                tiktok_ok = upload_to_tiktok(clip)
-                if tiktok_ok:
+                tiktok_url = upload_to_tiktok(clip)
+                if tiktok_url:
                     mark_tiktok_uploaded(video_id)
+
+            notify_clip_uploaded(title, video_id, num, total, tiktok_url=tiktok_url)
+            notice(f"  ✅ [{num}/{total}] Yüklendi: {title[:50]}")
+            log_upload(video_id, title, category, source, file_path=clip.get("file_path", ""))
 
             if sheet_id:
                 try:
@@ -191,6 +192,7 @@ def main():
                         "status": "Yüklendi ✅",
                         "publish_at": publish_at,
                         "youtube_link": f"https://youtube.com/shorts/{video_id}",
+                        "tiktok_link": tiktok_url if tiktok_url != "uploaded" else "",
                         "drive_link": drive_link,
                         "description": clip.get("caption", clip.get("description", "")),
                     })

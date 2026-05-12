@@ -19,12 +19,16 @@ def send_telegram(message: str):
     }, timeout=10)
 
 
-def notify_clip_uploaded(title: str, video_id: str, clip_num: int, total: int):
+def notify_clip_uploaded(title: str, video_id: str, clip_num: int, total: int, tiktok_url: str = ""):
     message = (
         f"✅ <b>Klip {clip_num}/{total} yüklendi</b>\n"
         f"📌 {title}\n"
-        f"▶️ https://youtube.com/shorts/{video_id}"
+        f"▶️ <a href='https://youtube.com/shorts/{video_id}'>YouTube</a>"
     )
+    if tiktok_url and tiktok_url != "uploaded":
+        message += f"\n🎵 <a href='{tiktok_url}'>TikTok</a>"
+    elif tiktok_url == "uploaded":
+        message += "\n🎵 TikTok'a yüklendi"
     send_telegram(message)
 
 
