@@ -41,10 +41,11 @@ def _transcribe_assemblyai(audio_path: str) -> list[dict]:
     resp = requests.post(f"{base}/transcript", headers={**headers, "content-type": "application/json"}, json={
         "audio_url": audio_url,
         "language_code": "tr",
-        "word_boost": ["feronline", "kick", "valorant", "ace", "clutch"],
         "punctuate": True,
         "format_text": True,
     }, timeout=30)
+    if not resp.ok:
+        print(f"  AssemblyAI hata detayı: {resp.text}")
     resp.raise_for_status()
     transcript_id = resp.json()["id"]
     print(f"  AssemblyAI: transkripsiyon başlatıldı (ID: {transcript_id})")
