@@ -143,7 +143,8 @@ Kötü başlık örnekleri (YAPMA):
 - Abartılı "viral olacak!" tarzı yazma
 - Transkriptten emin olmadığın kelimeleri caption'a yazma
 - Max 300 karakter
-- Sonuna max 8 hashtag: #feronline #kick #shorts ve kategoriye uygun 2-3 tane daha
+- MUTLAKA her caption'ın sonunda şunlar olsun: #feronline #kick #shorts
+- Bunlara ek kategoriye uygun 2-3 hashtag daha ekle, toplam max 8
 
 --- DİĞER KURALLAR ---
 - Her klip 20-60 saniye arası

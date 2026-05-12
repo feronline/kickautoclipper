@@ -45,13 +45,14 @@ def upload_clip(clip: dict, youtube=None, publish_at: datetime = None) -> str:
     if publish_at_str:
         status["publishAt"] = publish_at_str
 
+    caption = clip.get("caption") or clip.get("description", "")
+    if "#feronline" not in caption:
+        caption += "\n\n#feronline #kick #shorts"
+
     body = {
         "snippet": {
             "title": title,
-            "description": clip.get("caption") or (
-                clip.get("description", "") +
-                "\n\n#Shorts #feronline #kick #gaming #clips"
-            ),
+            "description": caption,
             "tags": clip.get("tags", []) + ["feronline", "kick", "shorts", "gaming", "clips"],
             "categoryId": "20",
         },
