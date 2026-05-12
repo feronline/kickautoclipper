@@ -38,11 +38,15 @@ def _transcribe_assemblyai(audio_path: str) -> list[dict]:
     audio_url = upload.json()["upload_url"]
 
     # Transkripsiyon başlat
-    payload = {"audio_url": audio_url, "language_code": "tr"}
-    print(f"  AssemblyAI istek: {payload}", flush=True)
+    payload = {
+        "audio_url": audio_url,
+        "language_code": "tr",
+        "speech_model": "universal-2",
+    }
     resp = requests.post(f"{base}/transcript", headers={**headers, "content-type": "application/json"},
                          json=payload, timeout=30)
-    print(f"  AssemblyAI yanıt: {resp.status_code} {resp.text[:500]}", flush=True)
+    if not resp.ok:
+        print(f"  AssemblyAI hata: {resp.text[:300]}", flush=True)
     resp.raise_for_status()
     transcript_id = resp.json()["id"]
     print(f"  AssemblyAI: transkripsiyon başlatıldı (ID: {transcript_id})")
