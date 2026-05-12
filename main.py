@@ -42,7 +42,7 @@ def download_vod(vod: dict) -> str:
     print(f"⬇️  İndiriliyor: {vod_url}")
     cmd = [
         "yt-dlp",
-        "-f", "bestvideo[height<=720]+bestaudio/best[height<=720]",
+        "-f", "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
         "--merge-output-format", "mp4",
         "--quiet", "--no-warnings",
         "-o", output_path,

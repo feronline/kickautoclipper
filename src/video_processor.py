@@ -72,11 +72,11 @@ def convert_to_vertical_cam_game(input_path: str, output_path: str):
 WATERMARK_TEXT = "kick.com/feronline"
 WATERMARK_FILTER = (
     f"drawtext=text='{WATERMARK_TEXT}'"
-    ":fontsize=28"
-    ":fontcolor=white@0.75"
-    ":borderw=2"
-    ":bordercolor=black@0.5"
-    ":x=w-tw-18"
+    ":fontsize=46"
+    ":fontcolor=white@0.85"
+    ":borderw=3"
+    ":bordercolor=black@0.6"
+    ":x=w-tw-24"
     ":y=(h-th)/2"
 )
 
