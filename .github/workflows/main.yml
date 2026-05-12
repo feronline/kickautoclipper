@@ -27,7 +27,6 @@ jobs:
         id: vod_check
         run: |
           LAST_ID=$(cat last_vod_id.txt 2>/dev/null || echo "")
-          QUEUE_SIZE=$(python3 -c "import json; d=open('upload_queue.json').read(); print(len(json.loads(d)))" 2>/dev/null || echo "0")
 
           LATEST_ID=$(curl -s "https://kick.com/api/v2/channels/feronline/videos" \
             -H "Accept: application/json" \
@@ -39,14 +38,18 @@ jobs:
           print(v.get('id') or v.get('uuid') or '')
           " 2>/dev/null || echo "")
 
-          echo "last_id=$LAST_ID  |  latest_id=$LATEST_ID  |  queue=$QUEUE_SIZE"
+          PENDING=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/clip-queue" | \
+            python3 -c "import json,sys; r=json.load(sys.stdin); print(len(r.get('assets', [])))" 2>/dev/null || echo "0")
 
-          if [ "$QUEUE_SIZE" -gt "0" ]; then
+          echo "last_id=$LAST_ID  |  latest_id=$LATEST_ID  |  pending=$PENDING"
+
+          if [ "$PENDING" -gt "0" ]; then
             echo "skip=false" >> $GITHUB_OUTPUT
-            echo "✅ Kuyrukta $QUEUE_SIZE klip var, devam ediliyor."
+            echo "✅ GitHub'da $PENDING bekleyen klip var, devam ediliyor."
           elif [ -n "$LATEST_ID" ] && [ "$LATEST_ID" = "$LAST_ID" ]; then
             echo "skip=true" >> $GITHUB_OUTPUT
-            echo "⏭️ Yeni VOD yok (ID: $LATEST_ID), atlanıyor."
+            echo "⏭️ Yeni VOD yok ve bekleyen klip yok, atlanıyor."
           else
             echo "skip=false" >> $GITHUB_OUTPUT
             echo "✅ Yeni VOD bulundu (ID: $LATEST_ID), devam ediliyor."
@@ -93,7 +96,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add last_vod_id.txt upload_queue.json
-          git diff --staged --quiet || git commit -m "VOD ID ve kuyruk güncellendi"
+          git add last_vod_id.txt
+          git diff --staged --quiet || git commit -m "VOD ID güncellendi"
           git pull --rebase --autostash origin main
           git push

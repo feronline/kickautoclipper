@@ -1,6 +1,4 @@
 import os
-import re
-import sys
 import subprocess
 import shutil
 import json
@@ -11,7 +9,7 @@ from src.transcriber import extract_audio, transcribe, segments_to_text
 from src.clip_detector import detect_clips
 from src.audio_analyzer import detect_spikes, spikes_to_text, spikes_to_clips
 from src.video_processor import process_clips
-from src.youtube_uploader import upload_clip, upload_all_clips, PUBLISH_INTERVAL_HOURS, MAX_UPLOADS_PER_RUN
+from src.youtube_uploader import upload_clip, PUBLISH_INTERVAL_HOURS, MAX_UPLOADS_PER_RUN
 from src.notifier import notify_clip_uploaded, notify_error, notify_no_clips
 from src.performance_tracker import (log_upload, get_performance_context, should_skip_category,
                                       get_pending_tiktok_uploads, mark_tiktok_uploaded)
