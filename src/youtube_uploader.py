@@ -7,7 +7,8 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 # Her video bu kadar arayla yayına girer (saat)
-PUBLISH_INTERVAL_HOURS = 3
+PUBLISH_INTERVAL_HOURS = 5
+MAX_UPLOADS_PER_RUN = 6  # YouTube günlük kota limiti
 
 
 def get_youtube_client():

@@ -11,6 +11,8 @@ from src.video_processor import process_clips
 from src.youtube_uploader import upload_all_clips
 from src.notifier import notify_clip_uploaded, notify_error, notify_no_clips
 from src.performance_tracker import log_upload, get_performance_context
+from src.upload_queue import add_to_queue, pop_batch, queue_size
+from src.youtube_uploader import MAX_UPLOADS_PER_RUN
 
 WORK_DIR = "workspace"
 
@@ -39,6 +41,14 @@ def download_vod(vod: dict) -> str:
     return output_path
 
 
+def _upload_batch(clips: list[dict]):
+    from src.youtube_uploader import upload_all_clips
+    def on_uploaded(title, video_id, num, total):
+        notify_clip_uploaded(title, video_id, num, total)
+        log_upload(video_id, title, clips[num-1].get("category", "Genel"))
+    upload_all_clips(clips, on_uploaded=on_uploaded)
+
+
 def cleanup():
     if os.path.exists(WORK_DIR):
         shutil.rmtree(WORK_DIR)
@@ -47,6 +57,13 @@ def cleanup():
 
 def main():
     print("=== Kick → YouTube Otomasyonu Başlatıldı ===")
+
+    # Önce kuyrukta bekleyen klip var mı bak
+    if queue_size() > 0:
+        print(f"📋 Kuyrukta {queue_size()} klip var, önce onları yükle...")
+        batch = pop_batch(MAX_UPLOADS_PER_RUN)
+        _upload_batch(batch)
+        return
 
     vod = check_new_vod()
     if not vod:
@@ -85,12 +102,21 @@ def main():
         clips_dir = os.path.join(WORK_DIR, "clips")
         processed_clips = process_clips(video_path, clips, segments, clips_dir)
 
+        # İlk 6'yı yükle, kalanları kuyruğa ekle
+        to_upload = processed_clips[:MAX_UPLOADS_PER_RUN]
+        to_queue = processed_clips[MAX_UPLOADS_PER_RUN:]
+
+        if to_queue:
+            # Kuyruğa eklemek için video yollarını sakla
+            add_to_queue([{**c, "category": category} for c in to_queue])
+            print(f"📋 {len(to_queue)} klip kuyruğa eklendi, bir sonraki run'da yüklenecek.")
+
         def on_uploaded(title, video_id, num, total):
             notify_clip_uploaded(title, video_id, num, total)
             source = next((c.get("source", "transcript") for c in processed_clips if c["title"] == title), "transcript")
             log_upload(video_id, title, category, source)
 
-        video_ids = upload_all_clips(processed_clips, on_uploaded=on_uploaded)
+        video_ids = upload_all_clips(to_upload, on_uploaded=on_uploaded)
 
         save_last_processed_id(vod_id)
         print(f"\n=== Tamamlandı! {len(video_ids)} Shorts yüklendi. ===")
