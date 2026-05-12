@@ -15,8 +15,9 @@ from src.youtube_uploader import upload_clip, upload_all_clips, PUBLISH_INTERVAL
 from src.notifier import notify_clip_uploaded, notify_error, notify_no_clips
 from src.performance_tracker import (log_upload, get_performance_context, should_skip_category,
                                       get_pending_tiktok_uploads, mark_tiktok_uploaded)
-from src.drive_sheets import (upload_to_drive, log_to_sheets, ensure_sheet_headers,
-                               download_from_drive, get_pending_clips, update_clip_status)
+from src.drive_sheets import (log_to_sheets, ensure_sheet_headers,
+                               get_pending_clips, update_clip_status)
+from src.github_storage import upload_clip as gh_upload, download_clip as gh_download, delete_clip as gh_delete
 from src.tiktok_uploader import upload_to_tiktok
 
 WORK_DIR = "workspace"
@@ -58,18 +59,16 @@ def cleanup():
         print("Geçici dosyalar temizlendi.")
 
 
-def _save_clips_to_drive_and_sheets(clips: list[dict], stream_title: str, category: str, sheet_id: str):
-    """Her klip için Drive'a yükle + Sheets'e 'Bekliyor' olarak kaydet."""
-    use_drive = bool(os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON") or os.environ.get("GOOGLE_DRIVE_FOLDER_ID"))
+def _save_clips_to_storage_and_sheets(clips: list[dict], stream_title: str, category: str, sheet_id: str):
+    """Her klip için GitHub'a yükle + Sheets'e 'Bekliyor' olarak kaydet."""
     for clip in clips:
-        drive_link = ""
-        if use_drive:
-            try:
-                safe = (clip["title"][:50].replace("/", "-").replace("\\", "-")
-                        + f"_{clip.get('start_seconds', 0):.0f}.mp4")
-                drive_link, _ = upload_to_drive(clip["file_path"], safe)
-            except Exception as e:
-                notice(f"  ⚠️ Drive yükleme hatası: {e}")
+        file_link = ""
+        try:
+            safe = (clip["title"][:50].replace("/", "-").replace("\\", "-")
+                    + f"_{clip.get('start_seconds', 0):.0f}.mp4")
+            file_link = gh_upload(clip["file_path"], safe)
+        except Exception as e:
+            notice(f"  ⚠️ GitHub yükleme hatası: {e}")
 
         if sheet_id:
             try:
@@ -84,7 +83,7 @@ def _save_clips_to_drive_and_sheets(clips: list[dict], stream_title: str, catego
                     "publish_at": "",
                     "youtube_link": "",
                     "tiktok_link": "",
-                    "drive_link": drive_link,
+                    "drive_link": file_link,
                     "description": clip.get("caption", clip.get("description", "")),
                 })
                 notice(f"  📝 Kaydedildi: {clip['title'][:50]}")
@@ -93,7 +92,7 @@ def _save_clips_to_drive_and_sheets(clips: list[dict], stream_title: str, catego
 
 
 def _upload_pending_from_sheets(sheet_id: str):
-    """Sheets'teki 'Bekliyor' klipleri Drive'dan indirip YouTube'a yükle."""
+    """Sheets'teki 'Bekliyor' klipleri GitHub'dan indirip YouTube'a yükle."""
     from googleapiclient.errors import HttpError
 
     pending = get_pending_clips(sheet_id)
@@ -109,20 +108,20 @@ def _upload_pending_from_sheets(sheet_id: str):
     uploaded = 0
 
     for idx, info in enumerate(pending[:MAX_UPLOADS_PER_RUN]):
-        m = re.search(r'/d/([a-zA-Z0-9_-]+)', info.get("drive_link", ""))
-        if not m:
-            notice(f"  ⚠️ Drive linki geçersiz, atlanıyor: {info['title'][:40]}")
+        file_link = info.get("drive_link", "")
+        if not file_link:
+            notice(f"  ⚠️ Dosya linki yok, atlanıyor: {info['title'][:40]}")
             continue
 
-        file_id = m.group(1)
-        local_path = os.path.join(WORK_DIR, "clips", f"{file_id}.mp4")
+        filename = file_link.split("/")[-1]
+        local_path = os.path.join(WORK_DIR, "clips", filename)
 
         if not os.path.exists(local_path):
             try:
-                notice(f"  ⬇️  Drive'dan indiriliyor: {info['title'][:40]}")
-                download_from_drive(file_id, local_path)
+                notice(f"  ⬇️  GitHub'dan indiriliyor: {info['title'][:40]}")
+                gh_download(file_link, local_path)
             except Exception as e:
-                notice(f"  ⚠️ Drive indirme hatası: {e}")
+                notice(f"  ⚠️ GitHub indirme hatası: {e}")
                 continue
 
         clip = {
@@ -165,6 +164,12 @@ def _upload_pending_from_sheets(sheet_id: str):
         notify_clip_uploaded(info["title"], video_id, idx + 1, len(pending), tiktok_url=tiktok_url)
         log_upload(video_id, info["title"], info.get("category", "Genel"), file_path=local_path)
         notice(f"  ✅ [{idx + 1}/{len(pending)}] Yüklendi: {info['title'][:50]}")
+
+        # YouTube'a yüklendi, GitHub asset'i temizle
+        try:
+            gh_delete(file_link)
+        except Exception:
+            pass
 
         publish_time += timedelta(hours=PUBLISH_INTERVAL_HOURS)
         uploaded += 1
@@ -243,8 +248,8 @@ def main():
                     processed_clips = process_clips(video_path, clips, segments, clips_dir)
                     notice(f"✅ {len(processed_clips)} video işlendi")
 
-                    notice("☁️ Drive'a yükleniyor ve Sheets'e kaydediliyor...")
-                    _save_clips_to_drive_and_sheets(processed_clips, stream_title, category, sheet_id)
+                    notice("☁️ GitHub'a yükleniyor ve Sheets'e kaydediliyor...")
+                    _save_clips_to_storage_and_sheets(processed_clips, stream_title, category, sheet_id)
                     save_last_processed_id(vod_id)
 
             except Exception as e:
