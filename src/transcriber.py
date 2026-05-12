@@ -41,7 +41,7 @@ def _transcribe_assemblyai(audio_path: str) -> list[dict]:
     payload = {
         "audio_url": audio_url,
         "language_code": "tr",
-        "speech_models": ["universal-2"],
+        "speech_model": "best",
     }
     resp = requests.post(f"{base}/transcript", headers={**headers, "content-type": "application/json"},
                          json=payload, timeout=30)

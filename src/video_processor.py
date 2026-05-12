@@ -125,41 +125,56 @@ def filter_segments_for_clip(segments: list[dict], start: float, end: float) -> 
     return result
 
 
+def _adjust_timing(key_start: float, key_end: float, video_duration: float = 999999.0) -> tuple[float, float]:
+    """Key moment'i sona taşı: 30sn önce başlat, 15sn sonra bitir."""
+    new_start = max(0.0, key_start - 30.0)
+    new_end   = min(video_duration, key_start + 15.0)
+    # En az 20 saniye olsun
+    if new_end - new_start < 20:
+        new_end = min(video_duration, new_start + 20.0)
+    return new_start, new_end
+
+
+def get_video_duration(video_path: str) -> float:
+    import json as _json
+    result = subprocess.run(
+        ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", video_path],
+        capture_output=True, text=True,
+    )
+    try:
+        return float(_json.loads(result.stdout)["format"]["duration"])
+    except Exception:
+        return 999999.0
+
+
 def process_clips(video_path: str, clips: list[dict], segments: list[dict], output_dir: str) -> list[dict]:
-    from src.transcriber import generate_tiktok_ass
     os.makedirs(output_dir, exist_ok=True)
     processed = []
 
+    video_duration = get_video_duration(video_path)
+
     for i, clip in enumerate(clips):
-        start = clip["start_seconds"]
-        end = clip["end_seconds"]
+        key_start = clip["start_seconds"]
+        key_end   = clip["end_seconds"]
+        start, end = _adjust_timing(key_start, key_end, video_duration)
         label = f"clip_{i+1}"
 
-        raw_path = os.path.join(output_dir, f"{label}_raw.mp4")
+        raw_path      = os.path.join(output_dir, f"{label}_raw.mp4")
         vertical_path = os.path.join(output_dir, f"{label}_vertical.mp4")
-        ass_path = os.path.join(output_dir, f"{label}.ass")
-        final_path = os.path.join(output_dir, f"{label}_final.mp4")
+        final_path    = os.path.join(output_dir, f"{label}_final.mp4")
 
-        print(f"[{i+1}/10] Kesiliyor: {start:.0f}s - {end:.0f}s")
+        print(f"[{i+1}] Kesiliyor: {start:.0f}s-{end:.0f}s (key: {key_start:.0f}s)")
         cut_clip(video_path, start, end, raw_path)
 
-        print(f"[{i+1}/10] Dikey formata çevriliyor (kamera üst, oyun alt)...")
+        print(f"[{i+1}] Dikey formata çevriliyor...")
         convert_to_vertical_cam_game(raw_path, vertical_path)
         os.remove(raw_path)
 
-        clip_segments = filter_segments_for_clip(segments, start, end)
-        subtitles_enabled = not os.environ.get("DISABLE_SUBTITLES")
-        if clip_segments and subtitles_enabled:
-            print(f"[{i+1}/10] TikTok altyazı + watermark ekleniyor...")
-            generate_tiktok_ass(clip_segments, ass_path)
-            burn_ass_subtitles(vertical_path, ass_path, final_path)
-        else:
-            print(f"[{i+1}/10] Watermark ekleniyor...")
-            add_watermark(vertical_path, final_path)
-
+        print(f"[{i+1}] Watermark ekleniyor...")
+        add_watermark(vertical_path, final_path)
         os.remove(vertical_path)
 
-        processed.append({**clip, "file_path": final_path})
-        print(f"[{i+1}/10] Hazır: {final_path}")
+        processed.append({**clip, "start_seconds": start, "end_seconds": end, "file_path": final_path})
+        print(f"[{i+1}] Hazır: {final_path}")
 
     return processed

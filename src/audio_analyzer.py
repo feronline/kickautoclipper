@@ -101,6 +101,52 @@ def spikes_to_clips(spikes: list[dict], category: str = "Genel") -> list[dict]:
     return clips
 
 
+LAUGH_TOKENS = [
+    "haha", "hehe", "ahaha", "ahahah", "hahah", "heheheh",
+    "güldüm", "güldük", "gülüyorum", "çok güldüm", "öldüm gülerek",
+    "öldüm", "bitiyorum", "bitim", "kahkaha",
+]
+
+
+def detect_laughs(segments: list[dict]) -> list[dict]:
+    """Transkriptten gülme anlarını yüksek öncelikli klip adayı olarak döndürür."""
+    laughs = []
+    for seg in segments:
+        text = seg["text"].lower()
+        if any(tok in text for tok in LAUGH_TOKENS):
+            laughs.append({
+                "start_seconds": max(0.0, seg["start"] - 10.0),
+                "end_seconds": seg["end"] + 10.0,
+                "source": "laugh",
+                "score": 10,
+                "text": seg["text"].strip(),
+            })
+    # Üst üste binen gülmeleri birleştir
+    merged = []
+    for l in sorted(laughs, key=lambda x: x["start_seconds"]):
+        if merged and l["start_seconds"] < merged[-1]["end_seconds"]:
+            merged[-1]["end_seconds"] = max(merged[-1]["end_seconds"], l["end_seconds"])
+        else:
+            merged.append(l)
+    if merged:
+        print(f"😂 {len(merged)} gülme anı tespit edildi.")
+    return merged
+
+
+def laughs_to_text(laughs: list[dict]) -> str:
+    if not laughs:
+        return ""
+    lines = ["[😂 Gülme anları (EN YÜKSEK ÖNCELİK — mutlaka kliplensin):]"]
+    for i, l in enumerate(laughs):
+        m_s = int(l["start_seconds"] // 60)
+        s_s = int(l["start_seconds"] % 60)
+        m_e = int(l["end_seconds"] // 60)
+        s_e = int(l["end_seconds"] % 60)
+        text_preview = l.get("text", "")[:60]
+        lines.append(f"  {i+1}. {m_s:02d}:{s_s:02d}-{m_e:02d}:{s_e:02d} → \"{text_preview}\"")
+    return "\n".join(lines)
+
+
 def spikes_to_text(spikes: list[dict]) -> str:
     """Claude'a geçirmek için spike'ları metin formatına çevir."""
     if not spikes:

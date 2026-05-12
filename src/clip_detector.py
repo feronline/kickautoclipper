@@ -61,11 +61,30 @@ ACTION_KEYWORDS = [
     # Maç terimleri
     "round", "kazandık", "kaybettik", "plant", "defuse", "ult", "flash", "smoke",
     "entry", "retake", "peek", "hold", "push", "rush", "eco", "pistol",
-    # Ani tepki / bağırma (küfür dahil)
-    "lan", "ya", "abi", "oha", "of", "yok artık", "ne oluyor",
-    "amk", "orospu", "siktir", "hassiktir", "amınakoyim", "lanet", "kahretsin", "allah", "yarram",
+    # Ani tepki / bağırma (argo tamam, ağır küfür yok)
+    "lan", "ulan", "ya", "abi", "oha", "of", "yok artık", "ne oluyor",
     "neden", "nasıl", "imkansız", "inanamıyorum",
+    # Gülme
+    "haha", "hehe", "ahaha", "güldüm", "güldük", "öldüm",
 ]
+
+# Bu kelimeleri içeren klipler tamamen atlanır
+PROFANITY_FILTER = [
+    "ananı", "anana", "ananızı", "amına", "amınakoyim", "amına koyim",
+    "orospu", "orospu çocuğu", "orospunun", "siktir", "hassiktir",
+    "sik", "yarram", "götveren", "ibne",
+]
+
+
+def _has_profanity(segments: list[dict], start: float, end: float) -> bool:
+    """Klip aralığındaki transkriptte ağır küfür var mı?"""
+    for seg in segments:
+        if seg["end"] < start or seg["start"] > end:
+            continue
+        text = seg["text"].lower()
+        if any(p in text for p in PROFANITY_FILTER):
+            return True
+    return False
 
 
 def _has_action_keyword(clip: dict, extra_keywords: list = None) -> bool:
@@ -101,7 +120,7 @@ def filter_by_spikes(clips: list[dict], spikes: list[dict], category: str, extra
     return filtered
 
 
-def detect_clips(transcript_text: str, stream_title: str, category: str = "Genel", audio_spikes_text: str = "", performance_context: str = "", spikes: list = None) -> list[dict]:
+def detect_clips(transcript_text: str, stream_title: str, category: str = "Genel", audio_spikes_text: str = "", performance_context: str = "", spikes: list = None, segments: list = None) -> list[dict]:
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     category_instruction = get_category_instruction(category)
 
@@ -114,9 +133,17 @@ Transkriptten ilgi çekici anları bul, en iyi 10'unu döndür.
 Eğer ses analizi verisi varsa oradaki yüksek enerjili anları da değerlendir — konuşma olmasa bile oyun sesi spike'ları ilgi çekici olabilir.
 Eğer gerçekten iyi an yoksa clips için boş liste döndür: []
 
+🎤 GÜLMEYİ ÖNCE AL — EN YÜKSEK ÖNCELİK:
+Yayıncının yüksek sesle güldüğü, "haha", "ahahaha", "öldüm", "güldüm" dediği anlar
+aksiyon anlarından bile daha değerlidir. Bu anları mutlaka listeye al, 9-10 puan ver.
+
 ÖNEMLİ — Oyun kategorilerinde (Valorant, FPS, aksiyon oyunları):
 Sadece konuşma olan, arka planda oyun aksiyonu/sesi olmayan anları ALMA.
 O anın yakınında ses spike'ı yoksa max 4 puan ver.
+
+🚫 KÜFÜR YASAĞI — KLİP ALMA:
+"ananı", "amına", "orospu", "siktir" ve benzer ağır küfürlerin geçtiği anları ASLA klipleme.
+Hafif argo (lan, ulan, ya, of) olan anlar kliplenebilir.
 
 --- BAŞLIK KURALLARI (ÇOK ÖNEMLİ) ---
 - Başlık MUTLAKA transkriptten gerçek bir söz veya tepki olsun
@@ -190,8 +217,19 @@ Transkript:
         messages=[{"role": "user", "content": prompt}]
     )
 
-    raw = message.content[0].text.strip().strip("```json").strip("```").strip()
-    parsed = json.loads(raw)
+    raw = message.content[0].text.strip()
+    if raw.startswith("```"):
+        raw = raw.split("```", 2)[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+        raw = raw.rsplit("```", 1)[0].strip()
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as e:
+        print(f"  ⚠️ JSON parse hatası: {e}")
+        return []
 
     # Yeni format: {"keywords": [...], "clips": [...]}
     # Eski format fallback: direkt liste
@@ -221,6 +259,14 @@ Transkript:
     print(f"Claude {len(clips)} klip seçti (kategori: {category}):")
     for i, c in enumerate(clips):
         print(f"  {i+1}. [{c.get('score','?')}/10] {c['title'][:55]}")
+
+    # Transkript küfür filtresi
+    if segments:
+        before = len(clips)
+        clips = [c for c in clips if not _has_profanity(segments, c["start_seconds"], c["end_seconds"])]
+        removed = before - len(clips)
+        if removed:
+            print(f"  🚫 {removed} küfürlü klip elendi")
 
     # Oyun kategorilerinde spike olmayan klipler elenir (statik + dinamik keywordler)
     if spikes:

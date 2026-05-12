@@ -7,7 +7,7 @@ from datetime import datetime, timezone, timedelta
 from src.kick_monitor import check_new_vod, save_last_processed_id
 from src.transcriber import extract_audio, transcribe, segments_to_text
 from src.clip_detector import detect_clips
-from src.audio_analyzer import detect_spikes, spikes_to_text, spikes_to_clips
+from src.audio_analyzer import detect_spikes, spikes_to_text, spikes_to_clips, detect_laughs, laughs_to_text
 from src.video_processor import process_clips
 from src.youtube_uploader import upload_clip, PUBLISH_INTERVAL_HOURS, MAX_UPLOADS_PER_RUN
 from src.notifier import notify_clip_uploaded, notify_error, notify_no_clips
@@ -223,13 +223,16 @@ def main():
                 transcript_text = segments_to_text(segments)
                 spikes = detect_spikes(audio_path)
                 audio_spikes_text = spikes_to_text(spikes)
+                laughs = detect_laughs(segments)
+                laugh_text = laughs_to_text(laughs)
                 os.remove(audio_path)
 
                 notice("🎯 Claude klipler arıyor...")
                 performance_context = get_performance_context()
                 clips = detect_clips(
                     transcript_text, stream_title, category,
-                    audio_spikes_text, performance_context, spikes=spikes
+                    audio_spikes_text + "\n\n" + laugh_text,
+                    performance_context, spikes=spikes, segments=segments
                 )
 
                 if not clips:
