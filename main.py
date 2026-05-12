@@ -1,20 +1,22 @@
 import os
+import re
 import sys
 import subprocess
 import shutil
+import json
+from datetime import datetime, timezone, timedelta
 
 from src.kick_monitor import check_new_vod, save_last_processed_id
 from src.transcriber import extract_audio, transcribe, segments_to_text
 from src.clip_detector import detect_clips
 from src.audio_analyzer import detect_spikes, spikes_to_text, spikes_to_clips
 from src.video_processor import process_clips
-from src.youtube_uploader import upload_all_clips
+from src.youtube_uploader import upload_clip, upload_all_clips, PUBLISH_INTERVAL_HOURS, MAX_UPLOADS_PER_RUN
 from src.notifier import notify_clip_uploaded, notify_error, notify_no_clips
 from src.performance_tracker import (log_upload, get_performance_context, should_skip_category,
                                       get_pending_tiktok_uploads, mark_tiktok_uploaded)
-from src.upload_queue import add_to_queue, pop_batch, queue_size
-from src.youtube_uploader import MAX_UPLOADS_PER_RUN
-from src.drive_sheets import upload_to_drive, log_to_sheets, ensure_sheet_headers, download_from_drive
+from src.drive_sheets import (upload_to_drive, log_to_sheets, ensure_sheet_headers,
+                               download_from_drive, get_pending_clips, update_clip_status)
 from src.tiktok_uploader import upload_to_tiktok
 
 WORK_DIR = "workspace"
@@ -50,231 +52,219 @@ def download_vod(vod: dict) -> str:
     return output_path
 
 
-def _upload_batch(clips: list[dict]):
-    from src.youtube_uploader import upload_all_clips
-    def on_uploaded(title, video_id, num, total):
-        notify_clip_uploaded(title, video_id, num, total)
-        log_upload(video_id, title, clips[num-1].get("category", "Genel"))
-    upload_all_clips(clips, on_uploaded=on_uploaded)
-
-
 def cleanup():
     if os.path.exists(WORK_DIR):
         shutil.rmtree(WORK_DIR)
         print("Geçici dosyalar temizlendi.")
 
 
+def _save_clips_to_drive_and_sheets(clips: list[dict], stream_title: str, category: str, sheet_id: str):
+    """Her klip için Drive'a yükle + Sheets'e 'Bekliyor' olarak kaydet."""
+    use_drive = bool(os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON") or os.environ.get("GOOGLE_DRIVE_FOLDER_ID"))
+    for clip in clips:
+        drive_link = ""
+        if use_drive:
+            try:
+                safe = (clip["title"][:50].replace("/", "-").replace("\\", "-")
+                        + f"_{clip.get('start_seconds', 0):.0f}.mp4")
+                drive_link, _ = upload_to_drive(clip["file_path"], safe)
+            except Exception as e:
+                notice(f"  ⚠️ Drive yükleme hatası: {e}")
+
+        if sheet_id:
+            try:
+                log_to_sheets(sheet_id, {
+                    "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
+                    "stream_title": stream_title,
+                    "category": category,
+                    "title": clip["title"],
+                    "duration": f"{clip.get('end_seconds', 0) - clip.get('start_seconds', 0):.0f}",
+                    "score": clip.get("score", ""),
+                    "status": "Bekliyor",
+                    "publish_at": "",
+                    "youtube_link": "",
+                    "tiktok_link": "",
+                    "drive_link": drive_link,
+                    "description": clip.get("caption", clip.get("description", "")),
+                })
+                notice(f"  📝 Kaydedildi: {clip['title'][:50]}")
+            except Exception as e:
+                notice(f"  ⚠️ Sheets kayıt hatası: {e}")
+
+
+def _upload_pending_from_sheets(sheet_id: str):
+    """Sheets'teki 'Bekliyor' klipleri Drive'dan indirip YouTube'a yükle."""
+    from googleapiclient.errors import HttpError
+
+    pending = get_pending_clips(sheet_id)
+    if not pending:
+        notice("📭 Sheetste bekleyen klip yok.")
+        return
+
+    notice(f"📤 Sheetste {len(pending)} bekleyen klip var, YouTube kotası varsa yükleniyor...")
+    os.makedirs(os.path.join(WORK_DIR, "clips"), exist_ok=True)
+
+    now = datetime.now(timezone.utc)
+    publish_time = now + timedelta(hours=1)
+    uploaded = 0
+
+    for idx, info in enumerate(pending[:MAX_UPLOADS_PER_RUN]):
+        m = re.search(r'/d/([a-zA-Z0-9_-]+)', info.get("drive_link", ""))
+        if not m:
+            notice(f"  ⚠️ Drive linki geçersiz, atlanıyor: {info['title'][:40]}")
+            continue
+
+        file_id = m.group(1)
+        local_path = os.path.join(WORK_DIR, "clips", f"{file_id}.mp4")
+
+        if not os.path.exists(local_path):
+            try:
+                notice(f"  ⬇️  Drive'dan indiriliyor: {info['title'][:40]}")
+                download_from_drive(file_id, local_path)
+            except Exception as e:
+                notice(f"  ⚠️ Drive indirme hatası: {e}")
+                continue
+
+        clip = {
+            "title": info["title"],
+            "file_path": local_path,
+            "caption": info.get("description", ""),
+        }
+
+        try:
+            video_id = upload_clip(clip, publish_at=publish_time)
+        except HttpError as e:
+            reason = ""
+            try:
+                details = json.loads(e.content)
+                reason = details.get("error", {}).get("errors", [{}])[0].get("reason", "")
+            except Exception:
+                pass
+            if reason == "uploadLimitExceeded":
+                notice("⚠️ YouTube günlük kotası doldu, bu run'da daha fazla yüklenemiyor.")
+                break
+            raise
+
+        youtube_link = f"https://youtube.com/shorts/{video_id}"
+        publish_at_str = publish_time.strftime("%Y-%m-%d %H:%M UTC")
+
+        tiktok_url = ""
+        if os.environ.get("TIKTOK_COOKIES"):
+            try:
+                tiktok_url = upload_to_tiktok(clip, schedule_at=publish_time) or ""
+                if tiktok_url:
+                    mark_tiktok_uploaded(video_id)
+            except Exception as e:
+                notice(f"  ⚠️ TikTok yükleme hatası: {e}")
+
+        try:
+            update_clip_status(sheet_id, info["row_index"], youtube_link, publish_at_str, tiktok_url)
+        except Exception as e:
+            notice(f"  ⚠️ Sheets güncelleme hatası: {e}")
+
+        notify_clip_uploaded(info["title"], video_id, idx + 1, len(pending), tiktok_url=tiktok_url)
+        log_upload(video_id, info["title"], info.get("category", "Genel"), file_path=local_path)
+        notice(f"  ✅ [{idx + 1}/{len(pending)}] Yüklendi: {info['title'][:50]}")
+
+        publish_time += timedelta(hours=PUBLISH_INTERVAL_HOURS)
+        uploaded += 1
+
+    notice(f"✅ Bu run'da {uploaded} klip YouTube'a yüklendi.")
+
+
 def main():
     notice("🚀 Kick → YouTube Otomasyonu başlatıldı")
 
+    sheet_id = os.environ.get("GOOGLE_SHEET_ID", "")
+    if sheet_id:
+        try:
+            ensure_sheet_headers(sheet_id)
+        except Exception as e:
+            notice(f"⚠️ Sheets başlık kontrolü hatası: {e}")
+
     # TikTok'a yüklenmemiş klipler var mı?
     if os.environ.get("TIKTOK_COOKIES"):
-        pending = get_pending_tiktok_uploads()
-        if pending:
-            notice(f"📱 TikTok'a yüklenmemiş {len(pending)} klip var, yükleniyor...")
-            for clip in pending:
+        pending_tiktok = get_pending_tiktok_uploads()
+        if pending_tiktok:
+            notice(f"📱 TikTok'a yüklenmemiş {len(pending_tiktok)} klip var, yükleniyor...")
+            for clip in pending_tiktok:
                 if os.path.exists(clip.get("file_path", "")):
                     ok = upload_to_tiktok(clip)
                     if ok:
                         mark_tiktok_uploaded(clip["video_id"])
                 else:
-                    # Dosya yoksa (temizlendi) yine de işaretliyoruz
                     mark_tiktok_uploaded(clip["video_id"])
-
-    # Kuyrukta bekleyen klip var mı?
-    qs = queue_size()
-    if qs > 0:
-        notice(f"📋 Kuyrukta {qs} klip var, önce onları yükle...")
-        batch = pop_batch(MAX_UPLOADS_PER_RUN)
-        ready = []
-        for c in batch:
-            fp = c.get("file_path", "")
-            if os.path.exists(fp):
-                ready.append(c)
-            elif c.get("drive_file_id"):
-                notice(f"  ⬇️  Drive'dan indiriliyor: {c.get('title', '')[:40]}")
-                try:
-                    os.makedirs(os.path.dirname(fp) or "workspace/clips", exist_ok=True)
-                    dest = fp if fp else f"workspace/clips/{c['drive_file_id']}.mp4"
-                    download_from_drive(c["drive_file_id"], dest)
-                    c["file_path"] = dest
-                    ready.append(c)
-                except Exception as e:
-                    notice(f"  ⚠️ Drive indirme hatası: {e}")
-            else:
-                notice(f"  ⚠️ Klip dosyası yok ve Drive ID eksik, atlanıyor: {c.get('title', '')[:40]}")
-        if ready:
-            _upload_batch(ready)
-            notice(f"✅ Kuyruk yüklemesi tamamlandı")
-        return
 
     notice("🔍 Yeni VOD kontrol ediliyor...")
     vod = check_new_vod()
-    if not vod:
-        notice("⏭️ Yeni VOD yok. İşlem yok.")
-        return
 
-    vod_id = str(vod.get("id") or vod.get("uuid"))
-    stream_title = vod.get("_title") or vod.get("title") or "Kick Yayın Tekrarı"
-    category = vod.get("_category", "Genel")
-    notice(f"✅ Yeni VOD bulundu: {stream_title} ({category})")
+    if vod:
+        vod_id = str(vod.get("id") or vod.get("uuid"))
+        stream_title = vod.get("_title") or vod.get("title") or "Kick Yayın Tekrarı"
+        category = vod.get("_category", "Genel")
+        notice(f"✅ Yeni VOD bulundu: {stream_title} ({category})")
 
-    if should_skip_category(category):
-        notice(f"⏭️ '{category}' düşük performanslı kategori, atlanıyor.")
-        save_last_processed_id(vod_id)
-        return
-
-    try:
-        notice("⬇️ VOD indiriliyor...")
-        video_path = download_vod(vod)
-        notice("✅ İndirme tamamlandı")
-
-        notice("🎤 Ses çıkarılıyor ve transkript oluşturuluyor...")
-        audio_path = extract_audio(video_path)
-        segments = transcribe(audio_path)
-        notice(f"✅ Transkript hazır: {len(segments)} segment")
-
-        transcript_text = segments_to_text(segments)
-        spikes = detect_spikes(audio_path)
-        audio_spikes_text = spikes_to_text(spikes)
-        os.remove(audio_path)
-
-        notice("🎯 Claude klipler arıyor...")
-        performance_context = get_performance_context()
-        clips = detect_clips(transcript_text, stream_title, category, audio_spikes_text, performance_context, spikes=spikes)
-
-        if not clips:
-            notice("⚠️ Claude klip bulamadı → ses spike fallback devreye giriyor...")
-            clips = spikes_to_clips(spikes, category)
-
-        if not clips:
-            notice("❌ Hiç klip bulunamadı. İşlem tamamlandı.")
+        if should_skip_category(category):
+            notice(f"⏭️ '{category}' düşük performanslı kategori, atlanıyor.")
             save_last_processed_id(vod_id)
-            notify_no_clips()
-            return
+        else:
+            try:
+                notice("⬇️ VOD indiriliyor...")
+                video_path = download_vod(vod)
 
-        notice(f"✅ {len(clips)} klip seçildi → videolar işleniyor...")
-        clips_dir = os.path.join(WORK_DIR, "clips")
-        processed_clips = process_clips(video_path, clips, segments, clips_dir)
-        notice(f"✅ {len(processed_clips)} video işlendi")
+                notice("🎤 Ses çıkarılıyor ve transkript oluşturuluyor...")
+                audio_path = extract_audio(video_path)
+                segments = transcribe(audio_path)
+                notice(f"✅ Transkript hazır: {len(segments)} segment")
 
-        to_upload = processed_clips[:MAX_UPLOADS_PER_RUN]
-        to_queue = processed_clips[MAX_UPLOADS_PER_RUN:]
+                transcript_text = segments_to_text(segments)
+                spikes = detect_spikes(audio_path)
+                audio_spikes_text = spikes_to_text(spikes)
+                os.remove(audio_path)
 
-        if to_queue:
-            queued_with_drive = []
-            for c in to_queue:
-                entry = {**c, "category": category}
-                if os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON") or os.environ.get("GOOGLE_DRIVE_FOLDER_ID"):
-                    try:
-                        safe_name = (c.get("title", "clip")[:50].replace("/", "-").replace("\\", "-")
-                                     + f"_queue_{c.get('start_seconds', 0):.0f}.mp4")
-                        _, fid = upload_to_drive(c.get("file_path", ""), safe_name)
-                        if fid:
-                            entry["drive_file_id"] = fid
-                            notice(f"  ☁️  Kuyruğa alındı + Drive'a yüklendi: {safe_name[:40]}")
-                    except Exception as e:
-                        notice(f"  ⚠️ Kuyruk Drive yükleme hatası: {e}")
-                queued_with_drive.append(entry)
-            add_to_queue(queued_with_drive)
-            notice(f"📋 {len(to_queue)} klip kuyruğa eklendi (sonraki run'da yüklenecek)")
+                notice("🎯 Claude klipler arıyor...")
+                performance_context = get_performance_context()
+                clips = detect_clips(
+                    transcript_text, stream_title, category,
+                    audio_spikes_text, performance_context, spikes=spikes
+                )
 
-        sheet_id = os.environ.get("GOOGLE_SHEET_ID", "")
-        if sheet_id:
-            ensure_sheet_headers(sheet_id)
+                if not clips:
+                    notice("⚠️ Claude klip bulamadı → ses spike fallback devreye giriyor...")
+                    clips = spikes_to_clips(spikes, category)
 
-        notice(f"📤 {len(to_upload)} klip YouTube'a yükleniyor...")
+                if not clips:
+                    notice("❌ Hiç klip bulunamadı.")
+                    save_last_processed_id(vod_id)
+                    notify_no_clips()
+                else:
+                    notice(f"✅ {len(clips)} klip seçildi → videolar işleniyor...")
+                    clips_dir = os.path.join(WORK_DIR, "clips")
+                    processed_clips = process_clips(video_path, clips, segments, clips_dir)
+                    notice(f"✅ {len(processed_clips)} video işlendi")
 
-        publish_times = {}
+                    notice("☁️ Drive'a yükleniyor ve Sheets'e kaydediliyor...")
+                    _save_clips_to_drive_and_sheets(processed_clips, stream_title, category, sheet_id)
+                    save_last_processed_id(vod_id)
 
-        def on_uploaded(title, video_id, num, total):
-            from datetime import datetime, timezone, timedelta
+            except Exception as e:
+                notice(f"❌ HATA: {e}")
+                notify_error(str(e))
+                raise
+    else:
+        notice("⏭️ Yeni VOD yok.")
 
-            clip = next((c for c in processed_clips if c["title"] == title), {})
-            publish_at = publish_times.get(title, "")
-            source = clip.get("source", "transcript")
+    # Her run'da: Sheets'teki bekleyenleri YouTube kotası varsa yükle
+    if sheet_id:
+        try:
+            _upload_pending_from_sheets(sheet_id)
+        except Exception as e:
+            notice(f"❌ Yükleme hatası: {e}")
+            notify_error(str(e))
+            raise
 
-            drive_link = ""
-            if os.environ.get("GOOGLE_DRIVE_FOLDER_ID") or os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON"):
-                try:
-                    safe_name = title[:50].replace("/", "-").replace("\\", "-") + f"_{video_id}.mp4"
-                    drive_link, _ = upload_to_drive(clip.get("file_path", ""), safe_name)
-                except Exception as e:
-                    print(f"  ⚠️ Drive yükleme hatası: {e}")
-
-            tiktok_url = ""
-            if os.environ.get("TIKTOK_COOKIES"):
-                from datetime import datetime, timezone
-                schedule_dt = None
-                pt = publish_times.get(title)
-                if pt:
-                    try:
-                        schedule_dt = datetime.strptime(pt, "%Y-%m-%d %H:%M UTC").replace(tzinfo=timezone.utc)
-                    except Exception:
-                        pass
-                tiktok_url = upload_to_tiktok(clip, schedule_at=schedule_dt)
-                if tiktok_url:
-                    mark_tiktok_uploaded(video_id)
-
-            notify_clip_uploaded(title, video_id, num, total, tiktok_url=tiktok_url)
-            notice(f"  ✅ [{num}/{total}] Yüklendi: {title[:50]}")
-            log_upload(video_id, title, category, source, file_path=clip.get("file_path", ""))
-
-            if sheet_id:
-                try:
-                    log_to_sheets(sheet_id, {
-                        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
-                        "stream_title": stream_title,
-                        "category": category,
-                        "title": title,
-                        "duration": f"{clip.get('end_seconds', 0) - clip.get('start_seconds', 0):.0f}",
-                        "score": clip.get("score", ""),
-                        "status": "Yüklendi ✅",
-                        "publish_at": publish_at,
-                        "youtube_link": f"https://youtube.com/shorts/{video_id}",
-                        "tiktok_link": tiktok_url if tiktok_url != "uploaded" else "",
-                        "drive_link": drive_link,
-                        "description": clip.get("caption", clip.get("description", "")),
-                    })
-                except Exception as e:
-                    print(f"  ⚠️ Sheets kayıt hatası: {e}")
-
-        from src.youtube_uploader import PUBLISH_INTERVAL_HOURS
-        from datetime import datetime, timezone, timedelta
-        now = datetime.now(timezone.utc)
-        for i, clip in enumerate(to_upload):
-            t = now + timedelta(hours=1) + timedelta(hours=PUBLISH_INTERVAL_HOURS * i)
-            publish_times[clip["title"]] = t.strftime("%Y-%m-%d %H:%M UTC")
-
-        def on_quota_exceeded(remaining: list[dict]):
-            notice(f"⚠️ YouTube kotası doldu, {len(remaining)} klip kuyruğa alınıyor...")
-            queued = []
-            for c in remaining:
-                entry = {**c, "category": category}
-                if os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON") or os.environ.get("GOOGLE_DRIVE_FOLDER_ID"):
-                    try:
-                        safe_name = (c.get("title", "clip")[:50].replace("/", "-").replace("\\", "-")
-                                     + f"_quota_{c.get('start_seconds', 0):.0f}.mp4")
-                        _, fid = upload_to_drive(c.get("file_path", ""), safe_name)
-                        if fid:
-                            entry["drive_file_id"] = fid
-                            notice(f"  ☁️  Drive'a yüklendi: {safe_name[:40]}")
-                    except Exception as e:
-                        notice(f"  ⚠️ Drive yükleme hatası: {e}")
-                queued.append(entry)
-            add_to_queue(queued)
-
-        video_ids = upload_all_clips(to_upload, on_uploaded=on_uploaded, on_quota_exceeded=on_quota_exceeded)
-
-        save_last_processed_id(vod_id)
-        notice(f"🎉 Tamamlandı! {len(video_ids)} Shorts yüklendi.")
-
-    except Exception as e:
-        notice(f"❌ HATA: {e}")
-        notify_error(str(e))
-        raise
-    finally:
-        cleanup()
+    notice("🎉 Tamamlandı!")
+    cleanup()
 
 
 if __name__ == "__main__":

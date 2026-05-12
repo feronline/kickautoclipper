@@ -78,6 +78,44 @@ def download_from_drive(file_id: str, dest_path: str):
     print(f"  ⬇️  Drive'dan indirildi: {os.path.basename(dest_path)}")
 
 
+def get_pending_clips(sheet_id: str) -> list[dict]:
+    """Sheets'te 'Bekliyor' durumundaki en eski klipleri döner."""
+    creds = _get_creds()
+    svc = build("sheets", "v4", credentials=creds)
+    result = svc.spreadsheets().values().get(
+        spreadsheetId=sheet_id, range="A2:L"
+    ).execute()
+    rows = result.get("values", [])
+    pending = []
+    for i, row in enumerate(rows):
+        while len(row) < 12:
+            row.append("")
+        if row[6] == "Bekliyor":
+            pending.append({
+                "row_index": i + 2,
+                "date": row[0],
+                "stream_title": row[1],
+                "category": row[2],
+                "title": row[3],
+                "duration": row[4],
+                "score": row[5],
+                "drive_link": row[10],
+                "description": row[11],
+            })
+    return pending
+
+
+def update_clip_status(sheet_id: str, row_index: int, youtube_link: str, publish_at: str, tiktok_link: str = ""):
+    creds = _get_creds()
+    svc = build("sheets", "v4", credentials=creds)
+    svc.spreadsheets().values().update(
+        spreadsheetId=sheet_id,
+        range=f"G{row_index}:J{row_index}",
+        valueInputOption="USER_ENTERED",
+        body={"values": [["Yüklendi ✅", publish_at, youtube_link, tiktok_link]]}
+    ).execute()
+
+
 def log_to_sheets(sheet_id: str, row: dict):
     creds = _get_creds()
     svc = build("sheets", "v4", credentials=creds)
