@@ -28,7 +28,6 @@ def _transcribe_assemblyai(audio_path: str) -> list[dict]:
 
     config = aai.TranscriptionConfig(
         language_code="tr",
-        speech_model=aai.SpeechModel.best,
         word_boost=["feronline", "kick", "valorant", "ace", "clutch"],
         punctuate=True,
         format_text=True,
