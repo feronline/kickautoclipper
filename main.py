@@ -102,7 +102,7 @@ def main():
 
         notice("🎯 Claude klipler arıyor...")
         performance_context = get_performance_context()
-        clips = detect_clips(transcript_text, stream_title, category, audio_spikes_text, performance_context)
+        clips = detect_clips(transcript_text, stream_title, category, audio_spikes_text, performance_context, spikes=spikes)
 
         if not clips:
             notice("⚠️ Claude klip bulamadı → ses spike fallback devreye giriyor...")

@@ -4,6 +4,10 @@ import os
 
 MIN_SCORE = 3  # Bu puanın altındaki klipler atlanır
 
+# Bu kategorilerde spike zorunlu — saf konuşma klipler elenir
+GAME_CATEGORIES = ["valorant", "fps", "cs2", "csgo", "fortnite", "apex", "overwatch",
+                   "minecraft", "pubg", "warzone", "league", "dota", "gaming"]
+
 
 CATEGORY_INSTRUCTIONS = {
     "valorant": (
@@ -42,7 +46,34 @@ def get_category_instruction(category: str) -> str:
     return DEFAULT_INSTRUCTION
 
 
-def detect_clips(transcript_text: str, stream_title: str, category: str = "Genel", audio_spikes_text: str = "", performance_context: str = "") -> list[dict]:
+def is_game_category(category: str) -> bool:
+    key = category.lower()
+    return any(g in key for g in GAME_CATEGORIES)
+
+
+def filter_by_spikes(clips: list[dict], spikes: list[dict], category: str) -> list[dict]:
+    """Oyun kategorilerinde: spike'ı olmayan klipler elenir."""
+    if not is_game_category(category) or not spikes:
+        return clips
+
+    filtered = []
+    for clip in clips:
+        cs = clip["start_seconds"]
+        ce = clip["end_seconds"]
+        has_spike = any(
+            not (s["end_seconds"] < cs or s["start_seconds"] > ce)
+            for s in spikes
+        )
+        if has_spike:
+            filtered.append(clip)
+        else:
+            print(f"  ⚡ Spike yok, elendi: {clip['title'][:50]}")
+
+    print(f"Spike filtresi: {len(clips)} → {len(filtered)} klip kaldı")
+    return filtered
+
+
+def detect_clips(transcript_text: str, stream_title: str, category: str = "Genel", audio_spikes_text: str = "", performance_context: str = "", spikes: list = None) -> list[dict]:
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     category_instruction = get_category_instruction(category)
 
@@ -135,5 +166,9 @@ Transkript:
     print(f"Claude {len(clips)} klip seçti (kategori: {category}):")
     for i, c in enumerate(clips):
         print(f"  {i+1}. [{c.get('score','?')}/10] {c['title'][:55]}")
+
+    # Oyun kategorilerinde spike olmayan klipler elenir
+    if spikes:
+        clips = filter_by_spikes(clips, spikes, category)
 
     return clips
