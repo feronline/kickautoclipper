@@ -137,7 +137,7 @@ def segments_to_text(segments: list[dict]) -> str:
 
 
 def generate_tiktok_ass(segments: list[dict], output_path: str, width=1080, height=1920):
-    # Impact font, kalın outline, sarı karaoke highlight (SecondaryColour = aktif kelime rengi)
+    # Impact font, kalın outline — SecondaryColour transparan → kelimeler sadece söylenince belirir
     header = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: {width}
@@ -146,7 +146,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Impact,98,&H00FFFFFF,&H0000FFFF,&H00000000,&H00000000,-1,0,0,0,100,100,1,0,1,6,3,2,20,20,300,1
+Style: Default,Impact,98,&H00FFFFFF,&HFF000000,&H00000000,&H00000000,-1,0,0,0,100,100,1,0,1,6,3,2,20,20,300,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

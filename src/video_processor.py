@@ -148,7 +148,8 @@ def process_clips(video_path: str, clips: list[dict], segments: list[dict], outp
         os.remove(raw_path)
 
         clip_segments = filter_segments_for_clip(segments, start, end)
-        if clip_segments:
+        subtitles_enabled = not os.environ.get("DISABLE_SUBTITLES")
+        if clip_segments and subtitles_enabled:
             print(f"[{i+1}/10] TikTok altyazı + watermark ekleniyor...")
             generate_tiktok_ass(clip_segments, ass_path)
             burn_ass_subtitles(vertical_path, ass_path, final_path)
