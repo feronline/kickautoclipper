@@ -10,6 +10,7 @@ from src.audio_analyzer import detect_spikes, spikes_to_text, spikes_to_clips
 from src.video_processor import process_clips
 from src.youtube_uploader import upload_all_clips
 from src.notifier import notify_clip_uploaded, notify_error, notify_no_clips
+from src.performance_tracker import log_upload, get_performance_context
 
 WORK_DIR = "workspace"
 
@@ -68,7 +69,8 @@ def main():
 
         os.remove(audio_path)
 
-        clips = detect_clips(transcript_text, stream_title, category, audio_spikes_text)
+        performance_context = get_performance_context()
+        clips = detect_clips(transcript_text, stream_title, category, audio_spikes_text, performance_context)
 
         if not clips:
             print("Claude klip bulamadı, ses spike fallback'e geçiliyor...")
@@ -83,7 +85,12 @@ def main():
         clips_dir = os.path.join(WORK_DIR, "clips")
         processed_clips = process_clips(video_path, clips, segments, clips_dir)
 
-        video_ids = upload_all_clips(processed_clips, on_uploaded=notify_clip_uploaded)
+        def on_uploaded(title, video_id, num, total):
+            notify_clip_uploaded(title, video_id, num, total)
+            source = next((c.get("source", "transcript") for c in processed_clips if c["title"] == title), "transcript")
+            log_upload(video_id, title, category, source)
+
+        video_ids = upload_all_clips(processed_clips, on_uploaded=on_uploaded)
 
         save_last_processed_id(vod_id)
         print(f"\n=== Tamamlandı! {len(video_ids)} Shorts yüklendi. ===")

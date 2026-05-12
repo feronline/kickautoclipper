@@ -36,7 +36,7 @@ def get_category_instruction(category: str) -> str:
     return DEFAULT_INSTRUCTION
 
 
-def detect_clips(transcript_text: str, stream_title: str, category: str = "Genel", audio_spikes_text: str = "") -> list[dict]:
+def detect_clips(transcript_text: str, stream_title: str, category: str = "Genel", audio_spikes_text: str = "", performance_context: str = "") -> list[dict]:
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     category_instruction = get_category_instruction(category)
 
@@ -92,9 +92,11 @@ SADECE JSON döndür:
 ]
 
 Transkript:
-{transcript_text[:13000]}
+{transcript_text[:12000]}
 
 {audio_spikes_text}
+
+{performance_context}
 """
 
     message = client.messages.create(
