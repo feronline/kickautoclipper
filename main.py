@@ -86,8 +86,13 @@ def main():
     if qs > 0:
         notice(f"📋 Kuyrukta {qs} klip var, önce onları yükle...")
         batch = pop_batch(MAX_UPLOADS_PER_RUN)
-        _upload_batch(batch)
-        notice(f"✅ Kuyruk yüklemesi tamamlandı")
+        valid = [c for c in batch if os.path.exists(c.get("file_path", ""))]
+        lost = len(batch) - len(valid)
+        if lost:
+            notice(f"⚠️ {lost} klip dosyası bulunamadı (önceki run temizledi), atlanıyor.")
+        if valid:
+            _upload_batch(valid)
+            notice(f"✅ Kuyruk yüklemesi tamamlandı")
         return
 
     notice("🔍 Yeni VOD kontrol ediliyor...")
