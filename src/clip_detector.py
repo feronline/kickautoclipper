@@ -51,41 +51,25 @@ def is_game_category(category: str) -> bool:
     return any(g in key for g in GAME_CATEGORIES)
 
 
-ACTION_KEYWORDS = [
-    "öldür", "vurdu", "vurdum", "headshot", "ace", "clutch", "kaçtım", "kaçtı",
-    "aldım", "aldı", "bitti", "öldü", "düştü", "düşürdüm", "round", "kazandık",
-    "kaybettik", "plant", "defuse", "spike", "ult", "yetenek", "flash", "smoke",
-]
-
-def _has_action_keyword(clip: dict) -> bool:
-    title = clip.get("title", "").lower()
-    desc = clip.get("description", "").lower()
-    caption = clip.get("caption", "").lower()
-    text = title + " " + desc + " " + caption
-    return any(k in text for k in ACTION_KEYWORDS)
-
-
 def filter_by_spikes(clips: list[dict], spikes: list[dict], category: str) -> list[dict]:
-    """Oyun kategorilerinde: spike'ı olmayan VE aksiyon kelimesi taşımayan klipler elenir."""
-    if not is_game_category(category):
+    """Oyun kategorilerinde: yakınında ses spike'ı olmayan klipler elenir."""
+    if not is_game_category(category) or not spikes:
         return clips
 
     filtered = []
     for clip in clips:
         cs = clip["start_seconds"]
         ce = clip["end_seconds"]
-        has_spike = spikes and any(
+        has_spike = any(
             not (s["end_seconds"] < cs or s["start_seconds"] > ce)
             for s in spikes
         )
-        has_keyword = _has_action_keyword(clip)
-
-        if has_spike or has_keyword:
+        if has_spike:
             filtered.append(clip)
         else:
-            print(f"  ⚡ Aksiyon yok, elendi: {clip['title'][:50]}")
+            print(f"  ⚡ Spike yok, elendi: {clip['title'][:50]}")
 
-    print(f"Aksiyon filtresi: {len(clips)} → {len(filtered)} klip kaldı")
+    print(f"Spike filtresi: {len(clips)} → {len(filtered)} klip kaldı")
     return filtered
 
 
