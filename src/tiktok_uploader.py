@@ -59,7 +59,23 @@ def upload_to_tiktok(clip: dict, schedule_at: datetime = None) -> str:
         if schedule_at:
             kwargs["schedule"] = schedule_at
 
-        result = upload_video(**kwargs)
+        import threading
+        result_holder = [None, None]  # [result, error]
+
+        def _run():
+            try:
+                result_holder[0] = upload_video(**kwargs)
+            except Exception as e:
+                result_holder[1] = e
+
+        t = threading.Thread(target=_run)
+        t.start()
+        t.join()
+
+        if result_holder[1]:
+            raise result_holder[1]
+
+        result = result_holder[0]
 
         # tiktok-uploader bazen URL, bazen video ID döner
         tiktok_url = ""
