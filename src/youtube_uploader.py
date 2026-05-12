@@ -46,6 +46,8 @@ def upload_clip(clip: dict, youtube=None, publish_at: datetime = None) -> str:
         status["publishAt"] = publish_at_str
 
     caption = clip.get("caption") or clip.get("description", "")
+    if "kick.com/feronline" not in caption:
+        caption = caption.rstrip() + "\n\nkick.com/feronline"
     if "#feronline" not in caption:
         caption += "\n\n#feronline #kick #shorts"
 

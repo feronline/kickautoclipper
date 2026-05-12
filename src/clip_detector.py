@@ -68,15 +68,16 @@ ACTION_KEYWORDS = [
 ]
 
 
-def _has_action_keyword(clip: dict) -> bool:
+def _has_action_keyword(clip: dict, extra_keywords: list = None) -> bool:
     title = clip.get("title", "").lower()
     desc = clip.get("description", "").lower()
     caption = clip.get("caption", "").lower()
     text = title + " " + desc + " " + caption
-    return any(k in text for k in ACTION_KEYWORDS)
+    all_keywords = ACTION_KEYWORDS + (extra_keywords or [])
+    return any(k in text for k in all_keywords)
 
 
-def filter_by_spikes(clips: list[dict], spikes: list[dict], category: str) -> list[dict]:
+def filter_by_spikes(clips: list[dict], spikes: list[dict], category: str, extra_keywords: list = None) -> list[dict]:
     """Oyun kategorilerinde: spike'ı VEYA aksiyon kelimesi olmayan klipler elenir."""
     if not is_game_category(category):
         return clips
@@ -89,7 +90,7 @@ def filter_by_spikes(clips: list[dict], spikes: list[dict], category: str) -> li
             not (s["end_seconds"] < cs or s["start_seconds"] > ce)
             for s in spikes
         )
-        has_keyword = _has_action_keyword(clip)
+        has_keyword = _has_action_keyword(clip, extra_keywords)
 
         if has_spike or has_keyword:
             filtered.append(clip)
@@ -111,7 +112,7 @@ Yayın: '{stream_title}' | Kategori: {category}
 
 Transkriptten ilgi çekici anları bul, en iyi 10'unu döndür.
 Eğer ses analizi verisi varsa oradaki yüksek enerjili anları da değerlendir — konuşma olmasa bile oyun sesi spike'ları ilgi çekici olabilir.
-Eğer gerçekten iyi an yoksa boş liste döndür: []
+Eğer gerçekten iyi an yoksa clips için boş liste döndür: []
 
 ÖNEMLİ — Oyun kategorilerinde (Valorant, FPS, aksiyon oyunları):
 Sadece konuşma olan, arka planda oyun aksiyonu/sesi olmayan anları ALMA.
@@ -143,26 +144,37 @@ Kötü başlık örnekleri (YAPMA):
 - Abartılı "viral olacak!" tarzı yazma
 - Transkriptten emin olmadığın kelimeleri caption'a yazma
 - Max 300 karakter
-- MUTLAKA her caption'ın sonunda şunlar olsun: #feronline #kick #shorts
+- MUTLAKA her caption şu şekilde bitsin (sıra değişmesin):
+  kick.com/feronline
+
+  #feronline #kick #shorts
 - Bunlara ek kategoriye uygun 2-3 hashtag daha ekle, toplam max 8
+
+--- KEYWORDS KURALI ---
+Bu yayının kategori ve başlığına bakarak, bu yayında "ilgi çekici an" sayılabilecek
+10-20 Türkçe anahtar kelime üret. Bunlar transkriptte geçince clipin değerini artırır.
+Örnek: kategori "Just Chatting", başlık "şarkı söylüyoruz" → ["şarkı", "söyle", "yanlış", "gitar", "nota", "beste", "söyledim", "tutturamadım"]
 
 --- DİĞER KURALLAR ---
 - Her klip 20-60 saniye arası
 - Klipler çakışmasın
 - Score 1-10, sadece >= {MIN_SCORE} olanları döndür
 
-SADECE JSON döndür:
-[
-  {{
-    "title": "başlık #Shorts",
-    "start_seconds": 120,
-    "end_seconds": 175,
-    "description": "kısa açıklama",
-    "caption": "2-3 satır samimi açıklama\\n\\n#feronline #kick #shorts",
-    "tags": ["feronline", "kick", "shorts"],
-    "score": 8
-  }}
-]
+SADECE JSON döndür (başka hiçbir şey yazma):
+{{
+  "keywords": ["kelime1", "kelime2", "..."],
+  "clips": [
+    {{
+      "title": "başlık #Shorts",
+      "start_seconds": 120,
+      "end_seconds": 175,
+      "description": "kısa açıklama",
+      "caption": "2-3 satır samimi açıklama\\n\\nkick.com/feronline\\n\\n#feronline #kick #shorts",
+      "tags": ["feronline", "kick", "shorts"],
+      "score": 8
+    }}
+  ]
+}}
 
 Transkript:
 {transcript_text[:12000]}
@@ -179,16 +191,27 @@ Transkript:
     )
 
     raw = message.content[0].text.strip().strip("```json").strip("```").strip()
-    clips = json.loads(raw)
+    parsed = json.loads(raw)
+
+    # Yeni format: {"keywords": [...], "clips": [...]}
+    # Eski format fallback: direkt liste
+    if isinstance(parsed, dict):
+        clips = parsed.get("clips", [])
+        dynamic_keywords = [k.lower() for k in parsed.get("keywords", [])]
+        if dynamic_keywords:
+            print(f"  🔑 Claude {len(dynamic_keywords)} keyword üretti: {', '.join(dynamic_keywords[:8])}...")
+    else:
+        clips = parsed
+        dynamic_keywords = []
 
     if not clips:
         print(f"Claude bu yayında klip almaya değer an bulmadı. Pass geçiliyor.")
         return []
 
-    # Sırala, min score filtrele, max 10 al
+    # Sırala, min score filtrele, max 12 al
     clips = [c for c in clips if c.get("score", 0) >= MIN_SCORE]
     clips.sort(key=lambda x: x.get("score", 0), reverse=True)
-    clips = clips[:12]  # En iyi 12, yükleme 2 güne yayılır
+    clips = clips[:12]
 
     # 60 sn limitini zorla
     for clip in clips:
@@ -199,8 +222,8 @@ Transkript:
     for i, c in enumerate(clips):
         print(f"  {i+1}. [{c.get('score','?')}/10] {c['title'][:55]}")
 
-    # Oyun kategorilerinde spike olmayan klipler elenir
+    # Oyun kategorilerinde spike olmayan klipler elenir (statik + dinamik keywordler)
     if spikes:
-        clips = filter_by_spikes(clips, spikes, category)
+        clips = filter_by_spikes(clips, spikes, category, extra_keywords=dynamic_keywords)
 
     return clips
