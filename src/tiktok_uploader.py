@@ -1,6 +1,7 @@
 import os
 import json
 import tempfile
+from datetime import datetime
 
 
 def _get_cookies_file() -> str:
@@ -30,8 +31,8 @@ def _get_cookies_file() -> str:
     return tmp.name
 
 
-def upload_to_tiktok(clip: dict) -> str:
-    """TikTok'a klip yükler. Başarılıysa video URL'i döner, hata olursa boş string."""
+def upload_to_tiktok(clip: dict, schedule_at: datetime = None) -> str:
+    """TikTok'a klip yükler. schedule_at verilirse zamanlanmış yayın yapar."""
     if not os.environ.get("TIKTOK_COOKIES"):
         return ""
 
@@ -44,13 +45,21 @@ def upload_to_tiktok(clip: dict) -> str:
         title = clip.get("caption") or clip.get("title", "")
         title = title[:150]
 
-        print(f"  📱 TikTok'a yükleniyor: {clip['title'][:50]}")
-        result = upload_video(
+        if schedule_at:
+            print(f"  📱 TikTok zamanlanıyor ({schedule_at.strftime('%d/%m %H:%M')} UTC): {clip['title'][:40]}")
+        else:
+            print(f"  📱 TikTok'a yükleniyor: {clip['title'][:50]}")
+
+        kwargs = dict(
             filename=clip["file_path"],
             description=title,
             cookies=cookies_path,
             headless=True,
         )
+        if schedule_at:
+            kwargs["schedule"] = schedule_at
+
+        result = upload_video(**kwargs)
 
         # tiktok-uploader bazen URL, bazen video ID döner
         tiktok_url = ""

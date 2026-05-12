@@ -172,7 +172,15 @@ def main():
 
             tiktok_url = ""
             if os.environ.get("TIKTOK_COOKIES"):
-                tiktok_url = upload_to_tiktok(clip)
+                from datetime import datetime, timezone
+                schedule_dt = None
+                pt = publish_times.get(title)
+                if pt:
+                    try:
+                        schedule_dt = datetime.strptime(pt, "%Y-%m-%d %H:%M UTC").replace(tzinfo=timezone.utc)
+                    except Exception:
+                        pass
+                tiktok_url = upload_to_tiktok(clip, schedule_at=schedule_dt)
                 if tiktok_url:
                     mark_tiktok_uploaded(video_id)
 
