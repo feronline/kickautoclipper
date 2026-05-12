@@ -1,4 +1,3 @@
-from faster_whisper import WhisperModel
 import subprocess
 import os
 
@@ -17,8 +16,73 @@ def extract_audio(video_path: str) -> str:
 
 
 def transcribe(audio_path: str) -> list[dict]:
-    print("🎙️  Transkript oluşturuluyor (faster-whisper medium)...")
+    if os.environ.get("ASSEMBLYAI_API_KEY"):
+        return _transcribe_assemblyai(audio_path)
+    return _transcribe_whisper(audio_path)
+
+
+def _transcribe_assemblyai(audio_path: str) -> list[dict]:
+    import assemblyai as aai
+    print("🎙️  Transkript oluşturuluyor (AssemblyAI)...")
+    aai.settings.api_key = os.environ["ASSEMBLYAI_API_KEY"]
+
+    config = aai.TranscriptionConfig(
+        language_code="tr",
+        speech_model=aai.SpeechModel.best,
+        word_boost=["feronline", "kick", "valorant", "ace", "clutch"],
+        punctuate=True,
+        format_text=True,
+    )
+    transcript = aai.Transcriber().transcribe(audio_path, config=config)
+
+    if transcript.status == aai.TranscriptStatus.error:
+        print(f"⚠️ AssemblyAI hatası: {transcript.error}, Whisper'a geçiliyor...")
+        return _transcribe_whisper(audio_path)
+
+    segments = []
+    for utt in (transcript.utterances or []):
+        words = [
+            {"word": w.text, "start": w.start / 1000, "end": w.end / 1000}
+            for w in (utt.words or [])
+        ]
+        segments.append({
+            "start": utt.start / 1000,
+            "end": utt.end / 1000,
+            "text": utt.text.strip(),
+            "words": words,
+        })
+
+    # utterances yoksa words'ten segment oluştur
+    if not segments and transcript.words:
+        chunk, chunk_start = [], None
+        for w in transcript.words:
+            if chunk_start is None:
+                chunk_start = w.start / 1000
+            chunk.append({"word": w.text, "start": w.start / 1000, "end": w.end / 1000})
+            if len(chunk) >= 8:
+                segments.append({
+                    "start": chunk_start,
+                    "end": chunk[-1]["end"],
+                    "text": " ".join(c["word"] for c in chunk),
+                    "words": chunk,
+                })
+                chunk, chunk_start = [], None
+        if chunk:
+            segments.append({
+                "start": chunk_start,
+                "end": chunk[-1]["end"],
+                "text": " ".join(c["word"] for c in chunk),
+                "words": chunk,
+            })
+
+    print(f"✅ Transkript tamamlandı (AssemblyAI): {len(segments)} segment")
+    return segments
+
+
+def _transcribe_whisper(audio_path: str) -> list[dict]:
+    from faster_whisper import WhisperModel
     import logging
+    print("🎙️  Transkript oluşturuluyor (faster-whisper medium)...")
     logging.getLogger("faster_whisper").setLevel(logging.ERROR)
     model = WhisperModel("medium", device="cpu", compute_type="int8")
     result_segments, _ = model.transcribe(
@@ -29,7 +93,7 @@ def transcribe(audio_path: str) -> list[dict]:
         log_prob_threshold=-1.0,
         condition_on_previous_text=False,
         temperature=0.0,
-        vad_filter=True,          # sessiz kısımları otomatik atla
+        vad_filter=True,
         vad_parameters={"min_silence_duration_ms": 500},
     )
 
@@ -40,19 +104,13 @@ def transcribe(audio_path: str) -> list[dict]:
             continue
         if seg.no_speech_prob > 0.6:
             continue
-
         words = [
             {"word": w.word, "start": w.start, "end": w.end}
             for w in (seg.words or [])
         ]
-        segments.append({
-            "start": seg.start,
-            "end": seg.end,
-            "text": text,
-            "words": words
-        })
+        segments.append({"start": seg.start, "end": seg.end, "text": text, "words": words})
 
-    print(f"✅ Transkript tamamlandı: {len(segments)} segment")
+    print(f"✅ Transkript tamamlandı (Whisper): {len(segments)} segment")
     return segments
 
 

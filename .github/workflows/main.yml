@@ -83,6 +83,7 @@ jobs:
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
           GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
           TIKTOK_COOKIES: ${{ secrets.TIKTOK_COOKIES }}
+          ASSEMBLYAI_API_KEY: ${{ secrets.ASSEMBLYAI_API_KEY }}
         run: python main.py
 
       - name: Son işlenen VOD ID'yi kaydet
