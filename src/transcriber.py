@@ -6,18 +6,20 @@ import os
 def extract_audio(video_path: str) -> str:
     audio_path = video_path.rsplit(".", 1)[0] + ".mp3"
     cmd = [
-        "ffmpeg", "-y",
+        "ffmpeg", "-y", "-loglevel", "error",
         "-i", video_path,
         "-vn", "-ar", "16000", "-ac", "1", "-b:a", "64k",
         audio_path
     ]
     subprocess.run(cmd, check=True, capture_output=True)
-    print(f"Ses çıkarıldı: {audio_path}")
+    print(f"✅ Ses çıkarıldı.")
     return audio_path
 
 
 def transcribe(audio_path: str) -> list[dict]:
-    print("faster-whisper medium model ile transkript oluşturuluyor...")
+    print("🎙️  Transkript oluşturuluyor (faster-whisper medium)...")
+    import logging
+    logging.getLogger("faster_whisper").setLevel(logging.ERROR)
     model = WhisperModel("medium", device="cpu", compute_type="int8")
     result_segments, _ = model.transcribe(
         audio_path,
@@ -50,7 +52,7 @@ def transcribe(audio_path: str) -> list[dict]:
             "words": words
         })
 
-    print(f"Transkript tamamlandı: {len(segments)} segment")
+    print(f"✅ Transkript tamamlandı: {len(segments)} segment")
     return segments
 
 

@@ -25,17 +25,17 @@ def download_vod(vod: dict) -> str:
         or f"https://kick.com/video/{vod.get('uuid') or vod.get('id')}"
     )
 
-    print(f"İndiriliyor: {vod_url}")
+    print(f"⬇️  İndiriliyor: {vod_url}")
     cmd = [
         "yt-dlp",
         "-f", "bestvideo[height<=720]+bestaudio/best[height<=720]",
         "--merge-output-format", "mp4",
-        "--quiet", "--progress",
-        "--progress-template", "[download] %(progress._percent_str)s %(progress._speed_str)s ETA %(progress._eta_str)s",
+        "--quiet", "--no-warnings",
         "-o", output_path,
         vod_url
     ]
     subprocess.run(cmd, check=True)
+    print("✅ İndirme tamamlandı.")
     return output_path
 
 

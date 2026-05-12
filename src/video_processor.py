@@ -6,7 +6,7 @@ import shutil
 def cut_clip(video_path: str, start: float, end: float, output_path: str):
     duration = end - start
     cmd = [
-        "ffmpeg", "-y",
+        "ffmpeg", "-y", "-loglevel", "error",
         "-ss", str(start), "-i", video_path,
         "-t", str(duration),
         "-c:v", "libx264", "-c:a", "aac", "-preset", "fast",
