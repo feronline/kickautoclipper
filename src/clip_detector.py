@@ -7,8 +7,14 @@ MIN_SCORE = 3  # Bu puanın altındaki klipler atlanır
 
 CATEGORY_INSTRUCTIONS = {
     "valorant": (
-        "Bu bir Valorant yayını. Şunlara bak: ace, clutch, multi-kill, inanılmaz atış, "
-        "düşmana güzel kapan, maç kazanma anı, sinirlenme veya kutlama. "
+        "Bu bir Valorant yayını.\n"
+        "KESİNLİKLE SADECE şu tür anları al: ace, clutch, multi-kill, güzel atış, "
+        "düşmana kapan, round kazanma, sinirlenme veya kutlama — BUNLARIN HEPSINDE "
+        "arka planda silah sesi / yetenek sesi / aksiyon OLMAK ZORUNDA.\n"
+        "YASAK: sadece konuşma olan, oyun aksiyonu olmayan anlar. "
+        "Yayıncı konuşurken arka planda sessizlik varsa o anı ALMA. "
+        "Ses analizi verisindeki spike'lar bu kategori için çok önemli — "
+        "spike olmayan bir ana 7+ puan verme.\n"
         "Caption'lar Valorant terimleri içersin (clutch, ace, ranked, radiant vb.)."
     ),
     "just chatting": (
@@ -48,6 +54,10 @@ Yayın: '{stream_title}' | Kategori: {category}
 Transkriptten ilgi çekici anları bul, en iyi 10'unu döndür.
 Eğer ses analizi verisi varsa oradaki yüksek enerjili anları da değerlendir — konuşma olmasa bile oyun sesi spike'ları ilgi çekici olabilir.
 Eğer gerçekten iyi an yoksa boş liste döndür: []
+
+ÖNEMLİ — Oyun kategorilerinde (Valorant, FPS, aksiyon oyunları):
+Sadece konuşma olan, arka planda oyun aksiyonu/sesi olmayan anları ALMA.
+O anın yakınında ses spike'ı yoksa max 4 puan ver.
 
 --- BAŞLIK KURALLARI (ÇOK ÖNEMLİ) ---
 - Başlık SAMİMİ ve DOĞAL olsun, sanki bir arkadaşın klip attığında yazacağı gibi
