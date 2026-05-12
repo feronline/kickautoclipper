@@ -79,6 +79,9 @@ def upload_clip(clip: dict, youtube=None, publish_at: datetime = None) -> str:
 
 
 def upload_all_clips(clips: list[dict], on_uploaded=None) -> list[str]:
+    from googleapiclient.errors import HttpError
+    from src.upload_queue import add_to_queue
+
     youtube = get_youtube_client()
     video_ids = []
     total = len(clips)
@@ -87,7 +90,24 @@ def upload_all_clips(clips: list[dict], on_uploaded=None) -> list[str]:
     publish_time = now + timedelta(hours=1)
 
     for i, clip in enumerate(clips):
-        video_id = upload_clip(clip, youtube, publish_at=publish_time)
+        try:
+            video_id = upload_clip(clip, youtube, publish_at=publish_time)
+        except HttpError as e:
+            reason = ""
+            try:
+                import json
+                details = json.loads(e.content)
+                reason = details.get("error", {}).get("errors", [{}])[0].get("reason", "")
+            except Exception:
+                pass
+
+            if reason == "uploadLimitExceeded":
+                remaining = clips[i:]
+                print(f"⚠️ YouTube günlük upload limiti doldu. {len(remaining)} klip kuyruğa ekleniyor...")
+                add_to_queue(remaining)
+                break
+            raise
+
         video_ids.append(video_id)
 
         if on_uploaded:
@@ -96,5 +116,4 @@ def upload_all_clips(clips: list[dict], on_uploaded=None) -> list[str]:
         publish_time += timedelta(hours=PUBLISH_INTERVAL_HOURS)
 
     print(f"\nToplam {len(video_ids)} video yüklendi.")
-    print(f"İlk video: 1 saat sonra | Son video: ~{1 + len(video_ids)*3} saat sonra")
     return video_ids

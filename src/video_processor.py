@@ -25,28 +25,30 @@ def convert_to_vertical_cam_game(input_path: str, output_path: str):
     game_h = 1152  # 1920 * 0.60
 
     filter_complex = (
-        # Kamera: sağ-alt 1/4 x 1/4
-        "[0:v]crop=iw/4:ih/4:iw*3/4:ih*3/4[cam_raw];"
+        # Girişi 3'e böl: kamera için, oyun bg için, oyun fg için
+        "[0:v]split=3[inp_cam][inp_game_bg][inp_game_fg];"
 
-        # Kamera arka plan (blur ile 1080x768 doldur)
-        f"[cam_raw]scale=1080:{cam_h}:force_original_aspect_ratio=increase,"
+        # Kamera: sağ-alt 1/4 x 1/4, bg ve fg için 2'ye böl
+        "[inp_cam]crop=iw/4:ih/4:iw*3/4:ih*3/4,split=2[cam_bg_src][cam_fg_src];"
+
+        # Kamera arka plan (blur ile 1080x{cam_h} doldur)
+        f"[cam_bg_src]scale=1080:{cam_h}:force_original_aspect_ratio=increase,"
         f"crop=1080:{cam_h},boxblur=20:5[cam_bg];"
 
-        # Kamera ön plan (%5 zoom)
-        f"[cam_raw]scale=1134:-2,crop=1080:ih:(iw-1080)/2:0[cam_fg];"
+        # Kamera ön plan (%5 zoom, 1080 genişlik)
+        "[cam_fg_src]scale=1134:-2,crop=1080:ih:(iw-1080)/2:0[cam_fg];"
 
         # Kamera bölümü birleştir
         f"[cam_bg][cam_fg]overlay=(W-w)/2:(H-h)/2[cam_section];"
 
-        # Oyun: tam frame (%5 zoom)
-        "[0:v]scale=1134:-2,crop=1080:ih:(iw-1080)/2:0[game_zoom];"
-
-        # Oyun arka plan (blur ile 1080x1152 doldur)
-        f"[game_zoom]scale=1080:{game_h}:force_original_aspect_ratio=increase,"
+        # Oyun arka plan (%5 zoom + blur ile 1080x{game_h} doldur)
+        f"[inp_game_bg]scale=1134:-2,crop=1080:ih:(iw-1080)/2:0,"
+        f"scale=1080:{game_h}:force_original_aspect_ratio=increase,"
         f"crop=1080:{game_h},boxblur=20:5[game_bg];"
 
-        # Oyun ön plan (yüksekliğe sığdır)
-        f"[game_zoom]scale=-2:{game_h}[game_fg];"
+        # Oyun ön plan (%5 zoom, yüksekliğe sığdır)
+        f"[inp_game_fg]scale=1134:-2,crop=1080:ih:(iw-1080)/2:0,"
+        f"scale=-2:{game_h}[game_fg];"
 
         # Oyun bölümü birleştir
         f"[game_bg][game_fg]overlay=(W-w)/2:(H-h)/2[game_section];"
