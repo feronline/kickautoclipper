@@ -56,7 +56,8 @@ def upload_to_drive(file_path: str, filename: str) -> tuple[str, str]:
     file = svc.files().create(
         body=metadata,
         media_body=media,
-        fields="id, webViewLink"
+        fields="id, webViewLink",
+        supportsAllDrives=True,
     ).execute()
 
     link = file.get("webViewLink", "")
