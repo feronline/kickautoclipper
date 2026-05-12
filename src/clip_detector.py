@@ -51,25 +51,41 @@ def is_game_category(category: str) -> bool:
     return any(g in key for g in GAME_CATEGORIES)
 
 
+ACTION_KEYWORDS = [
+    "öldür", "vurdu", "vurdum", "headshot", "ace", "clutch", "kaçtım", "kaçtı",
+    "aldım", "aldı", "bitti", "öldü", "düştü", "düşürdüm", "round", "kazandık",
+    "kaybettik", "plant", "defuse", "spike", "ult", "yetenek", "flash", "smoke",
+]
+
+def _has_action_keyword(clip: dict) -> bool:
+    title = clip.get("title", "").lower()
+    desc = clip.get("description", "").lower()
+    caption = clip.get("caption", "").lower()
+    text = title + " " + desc + " " + caption
+    return any(k in text for k in ACTION_KEYWORDS)
+
+
 def filter_by_spikes(clips: list[dict], spikes: list[dict], category: str) -> list[dict]:
-    """Oyun kategorilerinde: spike'ı olmayan klipler elenir."""
-    if not is_game_category(category) or not spikes:
+    """Oyun kategorilerinde: spike'ı olmayan VE aksiyon kelimesi taşımayan klipler elenir."""
+    if not is_game_category(category):
         return clips
 
     filtered = []
     for clip in clips:
         cs = clip["start_seconds"]
         ce = clip["end_seconds"]
-        has_spike = any(
+        has_spike = spikes and any(
             not (s["end_seconds"] < cs or s["start_seconds"] > ce)
             for s in spikes
         )
-        if has_spike:
+        has_keyword = _has_action_keyword(clip)
+
+        if has_spike or has_keyword:
             filtered.append(clip)
         else:
-            print(f"  ⚡ Spike yok, elendi: {clip['title'][:50]}")
+            print(f"  ⚡ Aksiyon yok, elendi: {clip['title'][:50]}")
 
-    print(f"Spike filtresi: {len(clips)} → {len(filtered)} klip kaldı")
+    print(f"Aksiyon filtresi: {len(clips)} → {len(filtered)} klip kaldı")
     return filtered
 
 
@@ -91,20 +107,24 @@ Sadece konuşma olan, arka planda oyun aksiyonu/sesi olmayan anları ALMA.
 O anın yakınında ses spike'ı yoksa max 4 puan ver.
 
 --- BAŞLIK KURALLARI (ÇOK ÖNEMLİ) ---
-- Başlık SAMİMİ ve DOĞAL olsun, sanki bir arkadaşın klip attığında yazacağı gibi
-- ASLA şu klişe ifadeleri kullanma: "çıldırdı", "patladı", "aniden", "inanılmaz", "kaçırma", "sadece burada", "böyle sahneler"
-- Transkriptte geçen gerçek bir sözü veya anı yansıt
-- Sade, kısa, merak uyandıran yaz — max 55 karakter (#Shorts hariç)
-- Türkçe internet dilinde, doğal konuşma tarzında
+- Başlık MUTLAKA transkriptten gerçek bir söz veya tepki olsun
+- Transkriptte alıntılanabilecek bir şey yoksa o klip için başlık UYDURMA, o klibe düşük puan ver
+- SAMİMİ ve DOĞAL: sanki o an telefona ekran kaydı atarken yazacağın şey
+- ASLA şunları yazma: "çıldırdı", "patladı", "aniden", "inanılmaz", "kaçırma", "yüksek enerji", "gergin an", "maç içi", "heyecanlı an", "dikkat çekici"
+- max 55 karakter (#Shorts hariç)
+- Türkçe internet dilinde, küçük harf, doğal
 
 Kötü başlık örnekleri (YAPMA):
 ❌ "Yayıncı Aniden Patladı 💢"
-❌ "Bu Anı Kaçırma! 😱"
+❌ "yüksek enerji an - maç içi"
+❌ "sessiz ama gergin"
+❌ "dikkat çekici bir an"
 ❌ "Çıldırdı! 😂🔥"
 
 İyi başlık örnekleri (BÖYLE YAP):
-✅ "neden böyle bir şey yaparsın ki"
-✅ "o an sessizlik"
+✅ "ya bu nasıl headshot ya"
+✅ "3e karşı 1 kaldım bi de kazandım"
+✅ "reyna niye ult atmıyor anlamıyorum"
 ✅ "2 saatlik uğraş 10 saniyede gitti"
 
 --- CAPTION KURALLARI ---
