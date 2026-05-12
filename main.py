@@ -13,6 +13,7 @@ from src.notifier import notify_clip_uploaded, notify_error, notify_no_clips
 from src.performance_tracker import log_upload, get_performance_context
 from src.upload_queue import add_to_queue, pop_batch, queue_size
 from src.youtube_uploader import MAX_UPLOADS_PER_RUN
+from src.drive_sheets import upload_to_drive, log_to_sheets, ensure_sheet_headers
 
 WORK_DIR = "workspace"
 _GA = bool(os.environ.get("GITHUB_ACTIONS"))
@@ -125,13 +126,56 @@ def main():
             add_to_queue([{**c, "category": category} for c in to_queue])
             notice(f"📋 {len(to_queue)} klip kuyruğa eklendi (sonraki run'da yüklenecek)")
 
+        sheet_id = os.environ.get("GOOGLE_SHEET_ID", "")
+        if sheet_id:
+            ensure_sheet_headers(sheet_id)
+
         notice(f"📤 {len(to_upload)} klip YouTube'a yükleniyor...")
 
+        publish_times = {}
+
         def on_uploaded(title, video_id, num, total):
+            from datetime import datetime, timezone, timedelta
             notify_clip_uploaded(title, video_id, num, total)
             notice(f"  ✅ [{num}/{total}] Yüklendi: {title[:50]}")
             source = next((c.get("source", "transcript") for c in processed_clips if c["title"] == title), "transcript")
             log_upload(video_id, title, category, source)
+
+            clip = next((c for c in processed_clips if c["title"] == title), {})
+            publish_at = publish_times.get(title, "")
+
+            drive_link = ""
+            if os.environ.get("GOOGLE_DRIVE_FOLDER_ID") or os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON"):
+                try:
+                    safe_name = title[:50].replace("/", "-").replace("\\", "-") + f"_{video_id}.mp4"
+                    drive_link = upload_to_drive(clip.get("file_path", ""), safe_name)
+                except Exception as e:
+                    print(f"  ⚠️ Drive yükleme hatası: {e}")
+
+            if sheet_id:
+                try:
+                    log_to_sheets(sheet_id, {
+                        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
+                        "stream_title": stream_title,
+                        "category": category,
+                        "title": title,
+                        "duration": f"{clip.get('end_seconds', 0) - clip.get('start_seconds', 0):.0f}",
+                        "score": clip.get("score", ""),
+                        "status": "Yüklendi ✅",
+                        "publish_at": publish_at,
+                        "youtube_link": f"https://youtube.com/shorts/{video_id}",
+                        "drive_link": drive_link,
+                        "description": clip.get("caption", clip.get("description", "")),
+                    })
+                except Exception as e:
+                    print(f"  ⚠️ Sheets kayıt hatası: {e}")
+
+        from src.youtube_uploader import PUBLISH_INTERVAL_HOURS
+        from datetime import datetime, timezone, timedelta
+        now = datetime.now(timezone.utc)
+        for i, clip in enumerate(to_upload):
+            t = now + timedelta(hours=1) + timedelta(hours=PUBLISH_INTERVAL_HOURS * i)
+            publish_times[clip["title"]] = t.strftime("%Y-%m-%d %H:%M UTC")
 
         video_ids = upload_all_clips(to_upload, on_uploaded=on_uploaded)
 
