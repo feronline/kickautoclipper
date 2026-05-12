@@ -69,11 +69,24 @@ def convert_to_vertical_cam_game(input_path: str, output_path: str):
         shutil.copy(input_path, output_path)
 
 
+WATERMARK_TEXT = "kick.com/feronline"
+WATERMARK_FILTER = (
+    f"drawtext=text='{WATERMARK_TEXT}'"
+    ":fontsize=28"
+    ":fontcolor=white@0.75"
+    ":borderw=2"
+    ":bordercolor=black@0.5"
+    ":x=w-tw-18"
+    ":y=(h-th)/2"
+)
+
+
 def burn_ass_subtitles(input_path: str, ass_path: str, output_path: str):
     ass_escaped = ass_path.replace("\\", "/").replace(":", "\\:")
+    vf = f"ass='{ass_escaped}',{WATERMARK_FILTER}"
     cmd = [
         "ffmpeg", "-y", "-i", input_path,
-        "-vf", f"ass='{ass_escaped}'",
+        "-vf", vf,
         "-c:v", "libx264", "-preset", "fast",
         "-c:a", "copy",
         output_path
@@ -81,6 +94,20 @@ def burn_ass_subtitles(input_path: str, ass_path: str, output_path: str):
     result = subprocess.run(cmd, capture_output=True)
     if result.returncode != 0:
         print("Altyazı yakma hatası, altyazısız devam ediliyor.")
+        shutil.copy(input_path, output_path)
+
+
+def add_watermark(input_path: str, output_path: str):
+    """Sadece watermark ekler (altyazısız klipler için)."""
+    cmd = [
+        "ffmpeg", "-y", "-i", input_path,
+        "-vf", WATERMARK_FILTER,
+        "-c:v", "libx264", "-preset", "fast",
+        "-c:a", "copy",
+        output_path
+    ]
+    result = subprocess.run(cmd, capture_output=True)
+    if result.returncode != 0:
         shutil.copy(input_path, output_path)
 
 
@@ -122,11 +149,12 @@ def process_clips(video_path: str, clips: list[dict], segments: list[dict], outp
 
         clip_segments = filter_segments_for_clip(segments, start, end)
         if clip_segments:
-            print(f"[{i+1}/10] TikTok altyazı ekleniyor...")
+            print(f"[{i+1}/10] TikTok altyazı + watermark ekleniyor...")
             generate_tiktok_ass(clip_segments, ass_path)
             burn_ass_subtitles(vertical_path, ass_path, final_path)
         else:
-            shutil.copy(vertical_path, final_path)
+            print(f"[{i+1}/10] Watermark ekleniyor...")
+            add_watermark(vertical_path, final_path)
 
         os.remove(vertical_path)
 
