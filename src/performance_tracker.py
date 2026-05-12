@@ -6,7 +6,8 @@ UPLOADS_FILE = "uploads.json"
 PERFORMANCE_FILE = "performance.json"
 
 
-def log_upload(video_id: str, title: str, category: str, clip_source: str = "transcript"):
+def log_upload(video_id: str, title: str, category: str, clip_source: str = "transcript",
+               file_path: str = "", tiktok_uploaded: bool = False):
     """Yüklenen klibi uploads.json'a kaydet."""
     uploads = _read_json(UPLOADS_FILE, [])
     uploads.append({
@@ -17,8 +18,25 @@ def log_upload(video_id: str, title: str, category: str, clip_source: str = "tra
         "uploaded_at": datetime.now(timezone.utc).isoformat(),
         "views": 0,
         "likes": 0,
+        "file_path": file_path,
+        "tiktok_uploaded": tiktok_uploaded,
     })
     _write_json(UPLOADS_FILE, uploads)
+
+
+def mark_tiktok_uploaded(video_id: str):
+    uploads = _read_json(UPLOADS_FILE, [])
+    for u in uploads:
+        if u["video_id"] == video_id:
+            u["tiktok_uploaded"] = True
+            break
+    _write_json(UPLOADS_FILE, uploads)
+
+
+def get_pending_tiktok_uploads() -> list[dict]:
+    """YouTube'a yüklenmiş ama TikTok'a yüklenmemiş klipleri döner."""
+    uploads = _read_json(UPLOADS_FILE, [])
+    return [u for u in uploads if not u.get("tiktok_uploaded", False) and u.get("file_path")]
 
 
 def fetch_and_update_stats(youtube):

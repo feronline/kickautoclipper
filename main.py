@@ -10,7 +10,8 @@ from src.audio_analyzer import detect_spikes, spikes_to_text, spikes_to_clips
 from src.video_processor import process_clips
 from src.youtube_uploader import upload_all_clips
 from src.notifier import notify_clip_uploaded, notify_error, notify_no_clips
-from src.performance_tracker import log_upload, get_performance_context, should_skip_category
+from src.performance_tracker import (log_upload, get_performance_context, should_skip_category,
+                                      get_pending_tiktok_uploads, mark_tiktok_uploaded)
 from src.upload_queue import add_to_queue, pop_batch, queue_size
 from src.youtube_uploader import MAX_UPLOADS_PER_RUN
 from src.drive_sheets import upload_to_drive, log_to_sheets, ensure_sheet_headers
@@ -66,7 +67,21 @@ def cleanup():
 def main():
     notice("🚀 Kick → YouTube Otomasyonu başlatıldı")
 
-    # Önce kuyrukta bekleyen klip var mı bak
+    # TikTok'a yüklenmemiş klipler var mı?
+    if os.environ.get("TIKTOK_COOKIES"):
+        pending = get_pending_tiktok_uploads()
+        if pending:
+            notice(f"📱 TikTok'a yüklenmemiş {len(pending)} klip var, yükleniyor...")
+            for clip in pending:
+                if os.path.exists(clip.get("file_path", "")):
+                    ok = upload_to_tiktok(clip)
+                    if ok:
+                        mark_tiktok_uploaded(clip["video_id"])
+                else:
+                    # Dosya yoksa (temizlendi) yine de işaretliyoruz
+                    mark_tiktok_uploaded(clip["video_id"])
+
+    # Kuyrukta bekleyen klip var mı?
     qs = queue_size()
     if qs > 0:
         notice(f"📋 Kuyrukta {qs} klip var, önce onları yükle...")
@@ -145,7 +160,7 @@ def main():
             notify_clip_uploaded(title, video_id, num, total)
             notice(f"  ✅ [{num}/{total}] Yüklendi: {title[:50]}")
             source = next((c.get("source", "transcript") for c in processed_clips if c["title"] == title), "transcript")
-            log_upload(video_id, title, category, source)
+            log_upload(video_id, title, category, source, file_path=clip.get("file_path", ""))
 
             clip = next((c for c in processed_clips if c["title"] == title), {})
             publish_at = publish_times.get(title, "")
@@ -158,8 +173,11 @@ def main():
                 except Exception as e:
                     print(f"  ⚠️ Drive yükleme hatası: {e}")
 
+            tiktok_ok = False
             if os.environ.get("TIKTOK_COOKIES"):
-                upload_to_tiktok(clip)
+                tiktok_ok = upload_to_tiktok(clip)
+                if tiktok_ok:
+                    mark_tiktok_uploaded(video_id)
 
             if sheet_id:
                 try:
