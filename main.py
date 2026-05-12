@@ -6,7 +6,7 @@ import shutil
 from src.kick_monitor import check_new_vod, save_last_processed_id
 from src.transcriber import extract_audio, transcribe, segments_to_text
 from src.clip_detector import detect_clips
-from src.audio_analyzer import detect_spikes, spikes_to_text
+from src.audio_analyzer import detect_spikes, spikes_to_text, spikes_to_clips
 from src.video_processor import process_clips
 from src.youtube_uploader import upload_all_clips
 from src.notifier import notify_clip_uploaded, notify_error, notify_no_clips
@@ -71,7 +71,11 @@ def main():
         clips = detect_clips(transcript_text, stream_title, category, audio_spikes_text)
 
         if not clips:
-            print("Klip alınacak an bulunamadı. İşlem tamamlandı.")
+            print("Claude klip bulamadı, ses spike fallback'e geçiliyor...")
+            clips = spikes_to_clips(spikes, category)
+
+        if not clips:
+            print("Hiç klip bulunamadı. İşlem tamamlandı.")
             save_last_processed_id(vod_id)
             notify_no_clips()
             return

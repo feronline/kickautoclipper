@@ -2,7 +2,7 @@ import anthropic
 import json
 import os
 
-MIN_SCORE = 5  # Bu puanın altındaki klipler atlanır
+MIN_SCORE = 3  # Bu puanın altındaki klipler atlanır
 
 
 CATEGORY_INSTRUCTIONS = {

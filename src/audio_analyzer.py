@@ -86,6 +86,21 @@ def detect_spikes(audio_path: str, min_gap: float = 30.0) -> list[dict]:
     return clips
 
 
+def spikes_to_clips(spikes: list[dict], category: str = "Genel") -> list[dict]:
+    """Ses spike'larından direkt klip üret (Claude bulamazsa fallback)."""
+    category_tag = category.lower().replace(" ", "")
+    clips = []
+    for i, s in enumerate(spikes[:10]):
+        clips.append({
+            **s,
+            "title": f"🎮 Heyecanlı an #{i+1} #Shorts",
+            "description": f"{category} yayınından ilgi çekici an",
+            "caption": f"Yayında dikkat çeken bir an 🎮🔥\n\n#feronline #kick #shorts #{category_tag}",
+            "tags": ["feronline", "kick", "shorts", category_tag, "gaming"],
+        })
+    return clips
+
+
 def spikes_to_text(spikes: list[dict]) -> str:
     """Claude'a geçirmek için spike'ları metin formatına çevir."""
     if not spikes:
