@@ -246,7 +246,25 @@ def main():
             t = now + timedelta(hours=1) + timedelta(hours=PUBLISH_INTERVAL_HOURS * i)
             publish_times[clip["title"]] = t.strftime("%Y-%m-%d %H:%M UTC")
 
-        video_ids = upload_all_clips(to_upload, on_uploaded=on_uploaded)
+        def on_quota_exceeded(remaining: list[dict]):
+            notice(f"⚠️ YouTube kotası doldu, {len(remaining)} klip kuyruğa alınıyor...")
+            queued = []
+            for c in remaining:
+                entry = {**c, "category": category}
+                if os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON") or os.environ.get("GOOGLE_DRIVE_FOLDER_ID"):
+                    try:
+                        safe_name = (c.get("title", "clip")[:50].replace("/", "-").replace("\\", "-")
+                                     + f"_quota_{c.get('start_seconds', 0):.0f}.mp4")
+                        _, fid = upload_to_drive(c.get("file_path", ""), safe_name)
+                        if fid:
+                            entry["drive_file_id"] = fid
+                            notice(f"  ☁️  Drive'a yüklendi: {safe_name[:40]}")
+                    except Exception as e:
+                        notice(f"  ⚠️ Drive yükleme hatası: {e}")
+                queued.append(entry)
+            add_to_queue(queued)
+
+        video_ids = upload_all_clips(to_upload, on_uploaded=on_uploaded, on_quota_exceeded=on_quota_exceeded)
 
         save_last_processed_id(vod_id)
         notice(f"🎉 Tamamlandı! {len(video_ids)} Shorts yüklendi.")

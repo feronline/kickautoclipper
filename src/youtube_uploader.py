@@ -79,9 +79,8 @@ def upload_clip(clip: dict, youtube=None, publish_at: datetime = None) -> str:
     return video_id
 
 
-def upload_all_clips(clips: list[dict], on_uploaded=None) -> list[str]:
+def upload_all_clips(clips: list[dict], on_uploaded=None, on_quota_exceeded=None) -> list[str]:
     from googleapiclient.errors import HttpError
-    from src.upload_queue import add_to_queue
 
     youtube = get_youtube_client()
     video_ids = []
@@ -104,8 +103,12 @@ def upload_all_clips(clips: list[dict], on_uploaded=None) -> list[str]:
 
             if reason == "uploadLimitExceeded":
                 remaining = clips[i:]
-                print(f"⚠️ YouTube günlük upload limiti doldu. {len(remaining)} klip kuyruğa ekleniyor...")
-                add_to_queue(remaining)
+                print(f"⚠️ YouTube günlük upload limiti doldu. {len(remaining)} klip kuyruğa alınıyor...")
+                if on_quota_exceeded:
+                    on_quota_exceeded(remaining)
+                else:
+                    from src.upload_queue import add_to_queue
+                    add_to_queue(remaining)
                 break
             raise
 
