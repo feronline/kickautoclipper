@@ -22,57 +22,69 @@ def transcribe(audio_path: str) -> list[dict]:
 
 
 def _transcribe_assemblyai(audio_path: str) -> list[dict]:
-    import assemblyai as aai
+    import requests
+    import time
     print("🎙️  Transkript oluşturuluyor (AssemblyAI)...")
-    aai.settings.api_key = os.environ["ASSEMBLYAI_API_KEY"]
 
-    config = aai.TranscriptionConfig(
-        language_code="tr",
-        word_boost=["feronline", "kick", "valorant", "ace", "clutch"],
-        punctuate=True,
-        format_text=True,
-    )
-    transcript = aai.Transcriber().transcribe(audio_path, config=config)
+    api_key = os.environ["ASSEMBLYAI_API_KEY"]
+    headers = {"authorization": api_key}
+    base = "https://api.assemblyai.com/v2"
 
-    if transcript.status == aai.TranscriptStatus.error:
-        print(f"⚠️ AssemblyAI hatası: {transcript.error}, Whisper'a geçiliyor...")
-        return _transcribe_whisper(audio_path)
+    # Dosyayı yükle
+    print("  AssemblyAI: ses dosyası yükleniyor...")
+    with open(audio_path, "rb") as f:
+        upload = requests.post(f"{base}/upload", headers=headers, data=f, timeout=300)
+    upload.raise_for_status()
+    audio_url = upload.json()["upload_url"]
 
-    segments = []
-    for utt in (transcript.utterances or []):
-        words = [
-            {"word": w.text, "start": w.start / 1000, "end": w.end / 1000}
-            for w in (utt.words or [])
-        ]
-        segments.append({
-            "start": utt.start / 1000,
-            "end": utt.end / 1000,
-            "text": utt.text.strip(),
-            "words": words,
-        })
+    # Transkripsiyon başlat
+    resp = requests.post(f"{base}/transcript", headers={**headers, "content-type": "application/json"}, json={
+        "audio_url": audio_url,
+        "language_code": "tr",
+        "word_boost": ["feronline", "kick", "valorant", "ace", "clutch"],
+        "punctuate": True,
+        "format_text": True,
+    }, timeout=30)
+    resp.raise_for_status()
+    transcript_id = resp.json()["id"]
+    print(f"  AssemblyAI: transkripsiyon başlatıldı (ID: {transcript_id})")
 
-    # utterances yoksa words'ten segment oluştur
-    if not segments and transcript.words:
-        chunk, chunk_start = [], None
-        for w in transcript.words:
-            if chunk_start is None:
-                chunk_start = w.start / 1000
-            chunk.append({"word": w.text, "start": w.start / 1000, "end": w.end / 1000})
-            if len(chunk) >= 8:
-                segments.append({
-                    "start": chunk_start,
-                    "end": chunk[-1]["end"],
-                    "text": " ".join(c["word"] for c in chunk),
-                    "words": chunk,
-                })
-                chunk, chunk_start = [], None
-        if chunk:
+    # Tamamlanmasını bekle
+    while True:
+        r = requests.get(f"{base}/transcript/{transcript_id}", headers=headers, timeout=30)
+        r.raise_for_status()
+        result = r.json()
+        status = result["status"]
+        if status == "completed":
+            break
+        elif status == "error":
+            print(f"⚠️ AssemblyAI hatası: {result.get('error')}, Whisper'a geçiliyor...")
+            return _transcribe_whisper(audio_path)
+        print(f"  AssemblyAI: {status}...")
+        time.sleep(5)
+
+    # words → segments
+    words_raw = result.get("words") or []
+    segments, chunk, chunk_start = [], [], None
+    for w in words_raw:
+        if chunk_start is None:
+            chunk_start = w["start"] / 1000
+        chunk.append({"word": w["text"], "start": w["start"] / 1000, "end": w["end"] / 1000})
+        if len(chunk) >= 8:
             segments.append({
                 "start": chunk_start,
                 "end": chunk[-1]["end"],
                 "text": " ".join(c["word"] for c in chunk),
                 "words": chunk,
             })
+            chunk, chunk_start = [], None
+    if chunk:
+        segments.append({
+            "start": chunk_start,
+            "end": chunk[-1]["end"],
+            "text": " ".join(c["word"] for c in chunk),
+            "words": chunk,
+        })
 
     print(f"✅ Transkript tamamlandı (AssemblyAI): {len(segments)} segment")
     return segments
