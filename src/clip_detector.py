@@ -62,8 +62,8 @@ ACTION_KEYWORDS = [
     "round", "kazandık", "kaybettik", "plant", "defuse", "ult", "flash", "smoke",
     "entry", "retake", "peek", "hold", "push", "rush", "eco", "pistol",
     # Ani tepki / bağırma (küfür dahil)
-    "lan", "ya", "abi", "いや", "oha", "of", "yok artık", "ne oluyor",
-    "amk", "orospu", "siktir", "lanet", "kahretsin", "allah", "yarram",
+    "lan", "ya", "abi", "oha", "of", "yok artık", "ne oluyor",
+    "amk", "orospu", "siktir", "hassiktir", "amınakoyim", "lanet", "kahretsin", "allah", "yarram",
     "neden", "nasıl", "imkansız", "inanamıyorum",
 ]
 
