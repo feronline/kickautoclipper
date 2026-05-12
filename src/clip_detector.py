@@ -52,10 +52,19 @@ def is_game_category(category: str) -> bool:
 
 
 ACTION_KEYWORDS = [
-    "öldür", "vurdu", "vurdum", "headshot", "ace", "clutch", "kaçtım", "kaçtı",
-    "aldım", "aldı", "bitti", "öldü", "düştü", "düşürdüm", "round", "kazandık",
-    "kaybettik", "plant", "defuse", "ult", "flash", "smoke", "entry", "retake",
-    "peek", "hold", "push", "rush", "eco", "full buy", "pistol",
+    # Öldürme / çatışma
+    "öldür", "vurdu", "vurdum", "vuramadım", "vur", "headshot", "ace", "clutch",
+    "öldü", "düştü", "düşürdüm", "aldım", "aldı", "bitti", "kaçtım", "kaçtı",
+    # Konum / takım çağrısı
+    "orada", "orda", "burda", "burada", "arkada", "sağda", "solda", "geliyor",
+    "gel", "geldim", "gelin", "bekle", "bekleyin", "dur", "durun",
+    # Maç terimleri
+    "round", "kazandık", "kaybettik", "plant", "defuse", "ult", "flash", "smoke",
+    "entry", "retake", "peek", "hold", "push", "rush", "eco", "pistol",
+    # Ani tepki / bağırma (küfür dahil)
+    "lan", "ya", "abi", "いや", "oha", "of", "yok artık", "ne oluyor",
+    "amk", "orospu", "siktir", "lanet", "kahretsin", "allah", "yarram",
+    "neden", "nasıl", "imkansız", "inanamıyorum",
 ]
 
 
