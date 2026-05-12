@@ -19,19 +19,52 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: VOD ID kontrolü
+        id: vod_check
+        run: |
+          LAST_ID=$(cat last_vod_id.txt 2>/dev/null || echo "")
+          QUEUE_SIZE=$(python3 -c "import json; d=open('upload_queue.json').read(); print(len(json.loads(d)))" 2>/dev/null || echo "0")
+
+          LATEST_ID=$(curl -s "https://kick.com/api/v2/channels/feronline/videos" \
+            -H "Accept: application/json" \
+            -H "User-Agent: Mozilla/5.0" | python3 -c "
+          import json,sys
+          data=json.load(sys.stdin)
+          videos=data if isinstance(data,list) else data.get('data',[])
+          v=videos[0] if videos else {}
+          print(v.get('id') or v.get('uuid') or '')
+          " 2>/dev/null || echo "")
+
+          echo "last_id=$LAST_ID  |  latest_id=$LATEST_ID  |  queue=$QUEUE_SIZE"
+
+          if [ "$QUEUE_SIZE" -gt "0" ]; then
+            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "✅ Kuyrukta $QUEUE_SIZE klip var, devam ediliyor."
+          elif [ -n "$LATEST_ID" ] && [ "$LATEST_ID" = "$LAST_ID" ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "⏭️ Yeni VOD yok (ID: $LATEST_ID), atlanıyor."
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "✅ Yeni VOD bulundu (ID: $LATEST_ID), devam ediliyor."
+          fi
+
       - name: Python kur
+        if: steps.vod_check.outputs.skip == 'false'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: "pip"
 
       - name: FFmpeg kur
+        if: steps.vod_check.outputs.skip == 'false'
         run: sudo apt-get install -y ffmpeg
 
       - name: Bağımlılıkları yükle
+        if: steps.vod_check.outputs.skip == 'false'
         run: pip install -r requirements.txt
 
       - name: Otomasyonu çalıştır
+        if: steps.vod_check.outputs.skip == 'false'
         env:
           PYTHONUNBUFFERED: "1"
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -40,6 +73,9 @@ jobs:
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
         run: python main.py
 
       - name: Son işlenen VOD ID'yi kaydet
