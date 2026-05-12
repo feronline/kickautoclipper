@@ -1,9 +1,10 @@
 import os
 import json
 from datetime import datetime, timezone
+import io
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
+from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 
 SCOPES = [
     "https://www.googleapis.com/auth/drive.file",
@@ -41,7 +42,8 @@ def ensure_sheet_headers(sheet_id: str):
         print("📊 Google Sheets başlık satırı oluşturuldu.")
 
 
-def upload_to_drive(file_path: str, filename: str) -> str:
+def upload_to_drive(file_path: str, filename: str) -> tuple[str, str]:
+    """Returns (webViewLink, file_id)"""
     folder_id = os.environ.get("GOOGLE_DRIVE_FOLDER_ID", "")
     creds = _get_creds()
     svc = build("drive", "v3", credentials=creds)
@@ -58,8 +60,22 @@ def upload_to_drive(file_path: str, filename: str) -> str:
     ).execute()
 
     link = file.get("webViewLink", "")
+    file_id = file.get("id", "")
     print(f"  ☁️  Drive'a yüklendi: {filename}")
-    return link
+    return link, file_id
+
+
+def download_from_drive(file_id: str, dest_path: str):
+    creds = _get_creds()
+    svc = build("drive", "v3", credentials=creds)
+    request = svc.files().get_media(fileId=file_id)
+    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+    with io.FileIO(dest_path, "wb") as fh:
+        downloader = MediaIoBaseDownload(fh, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+    print(f"  ⬇️  Drive'dan indirildi: {os.path.basename(dest_path)}")
 
 
 def log_to_sheets(sheet_id: str, row: dict):

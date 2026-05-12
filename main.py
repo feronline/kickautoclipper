@@ -14,7 +14,7 @@ from src.performance_tracker import (log_upload, get_performance_context, should
                                       get_pending_tiktok_uploads, mark_tiktok_uploaded)
 from src.upload_queue import add_to_queue, pop_batch, queue_size
 from src.youtube_uploader import MAX_UPLOADS_PER_RUN
-from src.drive_sheets import upload_to_drive, log_to_sheets, ensure_sheet_headers
+from src.drive_sheets import upload_to_drive, log_to_sheets, ensure_sheet_headers, download_from_drive
 from src.tiktok_uploader import upload_to_tiktok
 
 WORK_DIR = "workspace"
@@ -86,12 +86,25 @@ def main():
     if qs > 0:
         notice(f"📋 Kuyrukta {qs} klip var, önce onları yükle...")
         batch = pop_batch(MAX_UPLOADS_PER_RUN)
-        valid = [c for c in batch if os.path.exists(c.get("file_path", ""))]
-        lost = len(batch) - len(valid)
-        if lost:
-            notice(f"⚠️ {lost} klip dosyası bulunamadı (önceki run temizledi), atlanıyor.")
-        if valid:
-            _upload_batch(valid)
+        ready = []
+        for c in batch:
+            fp = c.get("file_path", "")
+            if os.path.exists(fp):
+                ready.append(c)
+            elif c.get("drive_file_id"):
+                notice(f"  ⬇️  Drive'dan indiriliyor: {c.get('title', '')[:40]}")
+                try:
+                    os.makedirs(os.path.dirname(fp) or "workspace/clips", exist_ok=True)
+                    dest = fp if fp else f"workspace/clips/{c['drive_file_id']}.mp4"
+                    download_from_drive(c["drive_file_id"], dest)
+                    c["file_path"] = dest
+                    ready.append(c)
+                except Exception as e:
+                    notice(f"  ⚠️ Drive indirme hatası: {e}")
+            else:
+                notice(f"  ⚠️ Klip dosyası yok ve Drive ID eksik, atlanıyor: {c.get('title', '')[:40]}")
+        if ready:
+            _upload_batch(ready)
             notice(f"✅ Kuyruk yüklemesi tamamlandı")
         return
 
@@ -149,7 +162,21 @@ def main():
         to_queue = processed_clips[MAX_UPLOADS_PER_RUN:]
 
         if to_queue:
-            add_to_queue([{**c, "category": category} for c in to_queue])
+            queued_with_drive = []
+            for c in to_queue:
+                entry = {**c, "category": category}
+                if os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON") or os.environ.get("GOOGLE_DRIVE_FOLDER_ID"):
+                    try:
+                        safe_name = (c.get("title", "clip")[:50].replace("/", "-").replace("\\", "-")
+                                     + f"_queue_{c.get('start_seconds', 0):.0f}.mp4")
+                        _, fid = upload_to_drive(c.get("file_path", ""), safe_name)
+                        if fid:
+                            entry["drive_file_id"] = fid
+                            notice(f"  ☁️  Kuyruğa alındı + Drive'a yüklendi: {safe_name[:40]}")
+                    except Exception as e:
+                        notice(f"  ⚠️ Kuyruk Drive yükleme hatası: {e}")
+                queued_with_drive.append(entry)
+            add_to_queue(queued_with_drive)
             notice(f"📋 {len(to_queue)} klip kuyruğa eklendi (sonraki run'da yüklenecek)")
 
         sheet_id = os.environ.get("GOOGLE_SHEET_ID", "")
@@ -171,7 +198,7 @@ def main():
             if os.environ.get("GOOGLE_DRIVE_FOLDER_ID") or os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON"):
                 try:
                     safe_name = title[:50].replace("/", "-").replace("\\", "-") + f"_{video_id}.mp4"
-                    drive_link = upload_to_drive(clip.get("file_path", ""), safe_name)
+                    drive_link, _ = upload_to_drive(clip.get("file_path", ""), safe_name)
                 except Exception as e:
                     print(f"  ⚠️ Drive yükleme hatası: {e}")
 
