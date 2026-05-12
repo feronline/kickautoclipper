@@ -23,15 +23,6 @@ def notice(msg: str):
     print(f"{prefix}{msg}", flush=True)
 
 
-def group(name: str):
-    print(f"::group::{name}" if _GA else f"\n--- {name} ---", flush=True)
-
-
-def endgroup():
-    if _GA:
-        print("::endgroup::", flush=True)
-
-
 def download_vod(vod: dict) -> str:
     os.makedirs(WORK_DIR, exist_ok=True)
     output_path = os.path.join(WORK_DIR, "stream.mp4")
@@ -99,10 +90,8 @@ def main():
         notice("✅ İndirme tamamlandı")
 
         notice("🎤 Ses çıkarılıyor ve transkript oluşturuluyor...")
-        group("Transkripsiyon detayları")
         audio_path = extract_audio(video_path)
         segments = transcribe(audio_path)
-        endgroup()
         notice(f"✅ Transkript hazır: {len(segments)} segment")
 
         transcript_text = segments_to_text(segments)
@@ -126,9 +115,7 @@ def main():
 
         notice(f"✅ {len(clips)} klip seçildi → videolar işleniyor...")
         clips_dir = os.path.join(WORK_DIR, "clips")
-        group("Video işleme detayları")
         processed_clips = process_clips(video_path, clips, segments, clips_dir)
-        endgroup()
         notice(f"✅ {len(processed_clips)} video işlendi")
 
         to_upload = processed_clips[:MAX_UPLOADS_PER_RUN]
