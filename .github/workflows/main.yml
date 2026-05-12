@@ -2,7 +2,7 @@ name: Kick → YouTube Otomasyonu
 
 on:
   schedule:
-    - cron: "0 */2 * * *"  # Her 2 saatte bir çalışır
+    - cron: "0 */10 * * *"  # Her 10 saatte bir çalışır
   workflow_dispatch:        # Manuel tetikleme butonu
 
 permissions:
