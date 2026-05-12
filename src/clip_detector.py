@@ -115,7 +115,7 @@ Transkript:
     # Sırala, min score filtrele, max 10 al
     clips = [c for c in clips if c.get("score", 0) >= MIN_SCORE]
     clips.sort(key=lambda x: x.get("score", 0), reverse=True)
-    clips = clips[:10]
+    clips = clips[:6]  # YouTube günlük kota limiti
 
     # 60 sn limitini zorla
     for clip in clips:
