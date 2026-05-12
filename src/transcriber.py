@@ -17,10 +17,10 @@ def extract_audio(video_path: str) -> str:
 
 
 def transcribe(audio_path: str) -> list[dict]:
-    print("🎙️  Transkript oluşturuluyor (faster-whisper large-v3-turbo)...")
+    print("🎙️  Transkript oluşturuluyor (faster-whisper medium)...")
     import logging
     logging.getLogger("faster_whisper").setLevel(logging.ERROR)
-    model = WhisperModel("large-v3-turbo", device="cpu", compute_type="int8")
+    model = WhisperModel("medium", device="cpu", compute_type="int8")
     result_segments, _ = model.transcribe(
         audio_path,
         language="tr",
