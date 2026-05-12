@@ -65,6 +65,13 @@ def check_new_vod():
         return None
 
     category = extract_category(vod)
-    print(f"Yeni yayın bulundu: {vod.get('title')} | Kategori: {category} (ID: {vod_id})")
+    title = (
+        vod.get("title")
+        or vod.get("session_title")
+        or vod.get("livestream", {}).get("session_title")
+        or "Kick Yayın Tekrarı"
+    )
+    vod["_title"] = title
+    print(f"Yeni yayın bulundu: {title} | Kategori: {category} (ID: {vod_id})")
     vod["_category"] = category
     return vod

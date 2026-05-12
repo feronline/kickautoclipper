@@ -53,7 +53,7 @@ def main():
         return
 
     vod_id = str(vod.get("id") or vod.get("uuid"))
-    stream_title = vod.get("title", "Kick Yayın Tekrarı")
+    stream_title = vod.get("_title") or vod.get("title") or "Kick Yayın Tekrarı"
     category = vod.get("_category", "Genel")
 
     try:
