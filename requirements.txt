@@ -1,5 +1,4 @@
 anthropic>=0.30.0
-groq
 faster-whisper
 yt-dlp
 google-api-python-client
