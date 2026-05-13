@@ -16,9 +16,99 @@ def extract_audio(video_path: str) -> str:
 
 
 def transcribe(audio_path: str) -> list[dict]:
+    if os.environ.get("GROQ_API_KEY"):
+        return _transcribe_groq(audio_path)
     if os.environ.get("ASSEMBLYAI_API_KEY"):
         return _transcribe_assemblyai(audio_path)
     return _transcribe_whisper(audio_path)
+
+
+def _transcribe_groq(audio_path: str) -> list[dict]:
+    from groq import Groq
+    print("🎙️  Transkript oluşturuluyor (Groq Whisper Large V3)...")
+
+    client = Groq(api_key=os.environ["GROQ_API_KEY"])
+    MAX_BYTES = 24 * 1024 * 1024  # 24MB güvenli limit
+
+    file_size = os.path.getsize(audio_path)
+    chunks = [audio_path]
+
+    # 24MB'ı aşıyorsa ffmpeg ile parçala
+    if file_size > MAX_BYTES:
+        duration_result = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+             "-of", "csv=p=0", audio_path],
+            capture_output=True, text=True,
+        )
+        total_dur = float(duration_result.stdout.strip())
+        chunk_dur = int(total_dur * MAX_BYTES / file_size) - 10  # biraz pay bırak
+        chunks = []
+        offset = 0
+        idx = 0
+        while offset < total_dur:
+            chunk_path = audio_path.replace(".mp3", f"_chunk{idx}.mp3")
+            subprocess.run([
+                "ffmpeg", "-y", "-loglevel", "error",
+                "-ss", str(offset), "-t", str(chunk_dur),
+                "-i", audio_path, chunk_path,
+            ], check=True)
+            chunks.append(chunk_path)
+            offset += chunk_dur
+            idx += 1
+        print(f"  Groq: {len(chunks)} parçaya bölündü")
+
+    all_segments = []
+    time_offset = 0.0
+
+    for chunk_path in chunks:
+        with open(chunk_path, "rb") as f:
+            resp = client.audio.transcriptions.create(
+                model="whisper-large-v3",
+                file=f,
+                language="tr",
+                response_format="verbose_json",
+                timestamp_granularities=["word"],
+            )
+
+        words_raw = getattr(resp, "words", []) or []
+        chunk, chunk_start = [], None
+        for w in words_raw:
+            ws = w.start + time_offset
+            we = w.end + time_offset
+            if chunk_start is None:
+                chunk_start = ws
+            chunk.append({"word": w.word, "start": ws, "end": we})
+            if len(chunk) >= 8:
+                all_segments.append({
+                    "start": chunk_start,
+                    "end": chunk[-1]["end"],
+                    "text": " ".join(c["word"] for c in chunk),
+                    "words": chunk,
+                })
+                chunk, chunk_start = [], None
+        if chunk:
+            all_segments.append({
+                "start": chunk_start,
+                "end": chunk[-1]["end"],
+                "text": " ".join(c["word"] for c in chunk),
+                "words": chunk,
+            })
+
+        # chunk süresini offset'e ekle
+        if chunk_path != audio_path:
+            dur_r = subprocess.run(
+                ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+                 "-of", "csv=p=0", chunk_path],
+                capture_output=True, text=True,
+            )
+            try:
+                time_offset += float(dur_r.stdout.strip())
+            except Exception:
+                pass
+            os.remove(chunk_path)
+
+    print(f"✅ Transkript tamamlandı (Groq): {len(all_segments)} segment")
+    return all_segments
 
 
 def _transcribe_assemblyai(audio_path: str) -> list[dict]:
