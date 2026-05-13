@@ -95,9 +95,9 @@ def _transcribe_assemblyai(audio_path: str) -> list[dict]:
 def _transcribe_whisper(audio_path: str) -> list[dict]:
     from faster_whisper import WhisperModel
     import logging
-    print("🎙️  Transkript oluşturuluyor (faster-whisper medium)...")
+    print("🎙️  Transkript oluşturuluyor (faster-whisper large-v3)...")
     logging.getLogger("faster_whisper").setLevel(logging.ERROR)
-    model = WhisperModel("medium", device="cpu", compute_type="int8")
+    model = WhisperModel("large-v3", device="cpu", compute_type="int8")
     result_segments, _ = model.transcribe(
         audio_path,
         language="tr",
