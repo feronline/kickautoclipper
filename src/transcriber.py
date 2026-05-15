@@ -64,7 +64,8 @@ def segments_to_text(segments: list[dict]) -> str:
 
 
 def generate_tiktok_ass(segments: list[dict], output_path: str, width=1080, height=1920):
-    # Impact font, kalın outline — SecondaryColour transparan → kelimeler sadece söylenince belirir
+    # Düz TikTok tarzı: beyaz yazı + siyah kontur, animasyon yok
+    # Sadece kelime söylenirken görünür (word-level timing)
     header = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: {width}
@@ -73,7 +74,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Impact,98,&H00FFFFFF,&HFF000000,&H00000000,&H00000000,-1,0,0,0,100,100,1,0,1,6,3,2,20,20,300,1
+Style: Default,Impact,92,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,1,0,1,7,0,2,40,40,320,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -89,22 +90,16 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     for seg in segments:
         words = seg.get("words", [])
         if not words:
-            events.append(
-                f"Dialogue: 0,{ts(seg['start'])},{ts(seg['end'])},Default,,0,0,0,,{seg['text'].upper()}"
-            )
             continue
 
-        group_size = 3  # 3 kelime → daha büyük ve okunabilir
+        group_size = 3
         for i in range(0, len(words), group_size):
             group = words[i:i + group_size]
             start = group[0]["start"]
             end = group[-1]["end"]
-            parts = []
-            for w in group:
-                dur_cs = max(1, int((w["end"] - w["start"]) * 100))
-                # \kf = smooth fill (sarıdan beyaza geçiş)
-                parts.append(f"{{\\kf{dur_cs}}}{w['word'].strip().upper()}")
-            text = " ".join(parts)
+            if end - start < 0.15:
+                end = start + 0.15
+            text = " ".join(w["word"].strip().upper() for w in group)
             events.append(f"Dialogue: 0,{ts(start)},{ts(end)},Default,,0,0,0,,{text}")
 
     with open(output_path, "w", encoding="utf-8") as f:

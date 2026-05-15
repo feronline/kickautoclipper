@@ -2,6 +2,8 @@ import subprocess
 import os
 import shutil
 
+from src.transcriber import generate_tiktok_ass
+
 
 def cut_clip(video_path: str, start: float, end: float, output_path: str):
     duration = end - start
@@ -161,7 +163,9 @@ def process_clips(video_path: str, clips: list[dict], segments: list[dict], outp
 
         raw_path      = os.path.join(output_dir, f"{label}_raw.mp4")
         vertical_path = os.path.join(output_dir, f"{label}_vertical.mp4")
+        subbed_path   = os.path.join(output_dir, f"{label}_subbed.mp4")
         final_path    = os.path.join(output_dir, f"{label}_final.mp4")
+        ass_path      = os.path.join(output_dir, f"{label}.ass")
 
         print(f"[{i+1}] Kesiliyor: {start:.0f}s-{end:.0f}s (key: {key_start:.0f}s)")
         cut_clip(video_path, start, end, raw_path)
@@ -170,9 +174,21 @@ def process_clips(video_path: str, clips: list[dict], segments: list[dict], outp
         convert_to_vertical_cam_game(raw_path, vertical_path)
         os.remove(raw_path)
 
+        clip_segments = filter_segments_for_clip(segments, start, end)
+        has_subs = any(s.get("words") for s in clip_segments)
+        if has_subs:
+            print(f"[{i+1}] Altyazı ekleniyor...")
+            generate_tiktok_ass(clip_segments, ass_path)
+            burn_ass_subtitles(vertical_path, ass_path, subbed_path)
+            os.remove(vertical_path)
+            os.remove(ass_path)
+            watermark_input = subbed_path
+        else:
+            watermark_input = vertical_path
+
         print(f"[{i+1}] Watermark ekleniyor...")
-        add_watermark(vertical_path, final_path)
-        os.remove(vertical_path)
+        add_watermark(watermark_input, final_path)
+        os.remove(watermark_input)
 
         processed.append({**clip, "start_seconds": start, "end_seconds": end, "file_path": final_path})
         print(f"[{i+1}] Hazır: {final_path}")
